@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "wesleygrimes.omafire",
+  "name": "OmaFire",
+  "version": "0.1.0",
+  "author": "Wes Grimes",
+  "license": "MIT",
+  "homepage": "https://github.com/wesleygrimes/omafire",
+  "description": "A tiny campfire in your bar. Add wood, stoke it, let it burn down.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "ui/OmaFireBar.qml"
+  },
+  "barWidget": {
+    "displayName": "OmaFire",
+    "description": "A small pixel campfire to tend while you work",
+    "category": "Info",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 
-const FIRE_JS = path.join(__dirname, "..", "..", "ui", "fire.js");
+const FIRE_JS = path.join(__dirname, "..", "..", "ui", "fire", "fire.js");
 
 function loadFire() {
   const source = fs.readFileSync(FIRE_JS, "utf8").replace(/^\.pragma library\s*$/m, "");

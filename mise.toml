@@ -1,0 +1,11 @@
+[tasks.test]
+description = "Run every OmaFire test (node, Chromium comparison, QML offscreen, Quickshell integration, plugin validate)"
+run = "node --test --test-concurrency=1 'tests/*.test.js'"
+
+[tasks.sound]
+description = "Regenerate assets/crackle.wav"
+run = "python3 scripts/gen-crackle.py"
+
+[tasks.preview]
+description = "Refresh preview.png from the 2x offscreen capture (run the tests first)"
+run = "cp tests/out/popup-2x.png preview.png"

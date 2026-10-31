@@ -87,8 +87,12 @@ function dump(bin, file) {
   return JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&"));
 }
 
-function screenshot(bin, file, png, scale, width = 520, height = 560) {
-  execFileSync("timeout", ["90", bin, ...FLAGS, `--force-device-scale-factor=${scale}`, `--window-size=${width},${height}`,
+// Same viewport for dump() and screenshot() so the popup box lines up.
+const VIEWPORT = "--window-size=800,600";
+FLAGS.push(VIEWPORT);
+
+function screenshot(bin, file, png, scale) {
+  execFileSync("timeout", ["90", bin, ...FLAGS, `--force-device-scale-factor=${scale}`,
     `--screenshot=${png}`, "file://" + file], { stdio: "ignore" });
   return png;
 }
