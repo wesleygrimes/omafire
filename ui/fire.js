@@ -317,13 +317,20 @@ function restore(text, nowMs) {
 function createFrame() { return new Uint8ClampedArray(W * H * 4); }
 
 // Nearest sampling of an RGBA source onto 360 x 240, like drawImage with
-// imageSmoothingEnabled = false (sample at destination pixel centres).
+// imageSmoothingEnabled = false. Destination pixel centres map into the
+// source; a centre landing exactly on a source pixel boundary takes the lower
+// pixel, as Chromium does (checked against reference/approved-scene.png: the
+// 720 x 480 art is sampled at even coordinates).
+function nearestIndex(i, srcSize, dstSize) {
+    return Math.max(0, Math.min(srcSize - 1, Math.ceil((i + 0.5) * srcSize / dstSize - 1)));
+}
+
 function prepareBackground(src, sw, sh) {
     var out = new Uint8ClampedArray(W * H * 4);
     for (var y = 0; y < H; y++) {
-        var sy = Math.min(sh - 1, Math.floor((y + 0.5) * sh / H));
+        var sy = nearestIndex(y, sh, H);
         for (var x = 0; x < W; x++) {
-            var sx = Math.min(sw - 1, Math.floor((x + 0.5) * sw / W));
+            var sx = nearestIndex(x, sw, W);
             var si = (sy * sw + sx) * 4, di = (y * W + x) * 4;
             out[di] = src[si]; out[di + 1] = src[si + 1]; out[di + 2] = src[si + 2]; out[di + 3] = 255;
         }

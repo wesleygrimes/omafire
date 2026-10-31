@@ -139,10 +139,12 @@ class MiniContext {
     if (this.record) this.ops.push(["drawImage", dx, dy, dw, dh, this.imageSmoothingEnabled]);
     if (this.imageSmoothingEnabled) throw new Error("mini-canvas: only nearest drawImage is emulated");
     const src = img.pixels, sw = img.naturalWidth, sh = img.naturalHeight;
+    // Pixel centres; exact ties go to the lower source pixel (Chromium).
+    const pick = (i, s, d) => Math.max(0, Math.min(s - 1, Math.ceil((i + 0.5) * s / d - 1)));
     for (let y = 0; y < dh; y++) {
-      const sy = Math.min(sh - 1, Math.floor((y + 0.5) * sh / dh));
+      const sy = pick(y, sh, dh);
       for (let x = 0; x < dw; x++) {
-        const sx = Math.min(sw - 1, Math.floor((x + 0.5) * sw / dw));
+        const sx = pick(x, sw, dw);
         const si = (sy * sw + sx) * 4, di = ((y + dy) * this.width + x + dx) * 4;
         this.data[di] = src[si]; this.data[di + 1] = src[si + 1]; this.data[di + 2] = src[si + 2]; this.data[di + 3] = 255;
       }
