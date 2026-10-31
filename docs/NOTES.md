@@ -1,0 +1,127 @@
+# OmaFire implementation notes
+
+Target checked on 2026-10-31: Omarchy 4.0.0 (Quattro), Quickshell 0.3.2, Qt 6.12.0, Hyprland 0.57, HEADLESS-1 at 3456x2160 scale 2, bar on top.
+
+## Layout
+
+```
+manifest.json            bar-widget, entry ui/OmaFireBar.qml
+ui/OmaFireBar.qml        host integration: BarWidget + BarIconButton + KeyboardPanel
+ui/FireSession.qml       singleton: one fire for all monitors, state file, IPC
+ui/qmldir                singleton FireSession, OmaFireBar
+ui/fire/                 plain QtQuick, no qs.* imports (renders standalone)
+  fire.js                simulation + software renderer (.pragma library, node-loadable)
+  FireState.qml          bindable wrapper around fire.js state, timers, sound toggle
+  FirePopup.qml          header, scene, footer, keys
+  FireScene.qml          Canvas, pointer input, toast
+  FireButton.qml         footer button
+  FireIcon.qml           12 x 12 bar flame
+  FireAudio.qml          QtMultimedia, created on first Sound press only
+assets/                  campsite-approved.webp (unchanged), crackle.wav (generated)
+scripts/gen-crackle.py   deterministic sound loop generator
+scripts/measure.js       CPU/RSS measurement in a live Wayland session
+tests/                   see "Tests"
+```
+
+The host-independent components live in `ui/fire/` because a qmldir that declares a singleton importing `Quickshell` makes the engine resolve it when any sibling type is compiled, which broke standalone loading.
+
+## Host integration contract (as found)
+
+- `PluginRegistry.validateManifest` requires `schemaVersion: 1`, `id`, `name`, `version`, `kinds`, `entryPoints`; entry points must be relative with no `..`; `barWidget.defaultSection` must be one of `left`, `centerBegin`, `center`, `centerEnd`, `tray`, `right`. No category validation; first-party categories seen: Status, AI, Compositor, Audio, Layout, System, Network, Time, Files, Info, Media. OmaFire uses `Info`.
+- The bar injects `bar`, `moduleName`, `settings`, `fixedEdge` into the widget (`qs.Ui/BarWidget`).
+- Popup: `qs.Ui/KeyboardPanel` (a full-screen layer-shell PanelWindow, card placed inside). It handles top/bottom/left/right bars, clamps the card to the output with `Style.gapsOut` margins, dismisses on outside click (including other outputs), primes keyboard focus, and coordinates with `bar.requestPopout/releasePopout`. When another popup takes over, the bar calls `owner.closeForPopoutSwitch()`. OmaFire sets `padding: 0`, `borderSpec: Border.none()`, `contentWidth: 390`, `contentHeight: 381`, and draws its own border and square corners over the host card, so the themed card color and corner radius never show.
+- Palette: the default look is the reference's fixed colors, so `Commons.Color` is not used. `Style.reduceMotion` is read for reduced motion.
+- IPC: `ShellIpc` from `qs.Commons` (an `IpcHandler` that `omarchy-shell` can also answer). It lives in the singleton, so there is one handler no matter how many bars exist.
+- State: `FileView.setText` exists in Quickshell 0.3.2, `atomicWrites` defaults to true, and it creates missing parent directories (checked with a scratch config).
+- `omarchy plugin validate` passes. `omarchy plugin add <url> --enable` is the form used by the comparable omastorm README; I could not run `omarchy plugin --help` in this environment to confirm the flag.
+
+## Simulation and timing
+
+Ported from `reference/animation.js` with identical arithmetic and random draw order (seed 5919). The parity test runs the original script and `fire.js` through the same frame clock and inputs and compares every drawn frame; they are bit-identical.
+
+- Fuel decays 0.00125/s: full load 800 s, initial 0.68 lasts 544 s, one log adds 200 s.
+- While the popup is open the simulation steps every 16 ms (the reference stepped every animation frame) with dt capped at 0.08 s, and the scene draws every 50 ms (180 ms with reduced motion).
+- Any time beyond the 0.08 s cap, and all time while the popup is closed, is applied analytically: fuel linearly, boost linearly, heat by the closed-form solution of `h' = 0.75 (max(0, fuel - 0.015) - h)` (the reference's Euler step converges to it; tested within 0.003 of the stepped result). No particle catch-up.
+- A wall-clock gap over 1 s (suspend, a stalled shell) is applied once, analytically.
+- Particle caps (new): 160 sparks, 40 smoke; oldest dropped first.
+
+## Persistence
+
+`$XDG_STATE_HOME/omafire/state.json`, else `~/.local/state/omafire/state.json` (`OMAFIRE_STATE` overrides, for tests):
+
+```json
+{"version":1,"fuel":0.83,"heat":0.79,"savedAt":1793462400000}
+```
+
+- Saved 0.5 s after any action, every 30 s while the fire isn't resting, on popup open/close, and on unload.
+- On load, fuel and heat advance analytically by the time since `savedAt`. Absences over 6 h restore straight to Resting. A clock that went backwards counts as no time. Corrupt or out-of-range JSON starts the default fire (0.68/0.68).
+- The scene clock (`elapsed`), particles, and toast are not saved.
+- Sound is not saved: it starts off every session, matching "default off".
+
+## Rendering
+
+`fire.js` composites each frame into a 360 x 240 RGBA buffer using canvas 2D semantics: source-over with alpha, separable `screen` for the light pool, 4 x 4 supersampled coverage for the rotated log, area coverage for the 1 px dashed drop rectangle, nearest sampling of the 720 x 480 art. Chromium's nearest drawImage resolves exact pixel-boundary ties to the lower source pixel (the art is sampled at even coordinates); the port does the same and matches `reference/approved-scene.png` exactly away from the fire.
+
+The scene Canvas is 360 x 240 logical and scaled to the 388 px interior with `smooth: false`. Qt 6.12 quirks found and worked around:
+
+- `putImageData(img, x, y)` without the four dirty arguments draws nothing.
+- With a non-zero dirty origin it crops the image and then offsets by the origin again, so the region lands in the wrong place. OmaFire puts whole 24 x 24 tile images at their own position with a 0,0 origin.
+- `CanvasPixelArray` stores premultiplied pixels: set alpha before color.
+- `putImageData` draws through the device-pixel-ratio scale, but `getImageData` reads raw device pixels, and a scaled `drawImage` filters. The background decoder canvas is therefore sized in device pixels and draws the art with `ctx.scale(1/dpr)`, which reproduces ImageMagick's decode exactly at 1x, 1.5x and 2x.
+
+Per frame, fire.js flags the tiles it drew into; the scene recopies those and last frame's tiles, writing only pixels that changed.
+
+## CPU and memory (measured)
+
+`node scripts/measure.js 20` on an AMD Ryzen 7 6800U, Hyprland HEADLESS-1 at scale 2, standalone Quickshell process with the popup and icon in their own windows:
+
+| State | CPU (one core) | Process RSS |
+| --- | --- | --- |
+| Popup open, scene at 20 fps | about 22-24% | about 280 MiB |
+| Popup closed, bar icon at 5 fps | about 0.7-1% | about 280 MiB |
+
+RSS is the whole standalone Quickshell process (Qt Quick and friends), not OmaFire's share inside the real shell. In-process timing: about 5.4 ms of JS render plus about 3 ms of tile copies per frame. Stepping the simulation at 20 Hz instead of 60 Hz made no measurable difference. These numbers need repeating on real hardware inside the live shell.
+
+## Sound
+
+`scripts/gen-crackle.py` follows the reference's Web Audio graph: brown noise (`(b + white * 0.035) / 1.02`, x4) through an RBJ 950 Hz lowpass, plus crackles (probability 0.00015 per sample, 90-790 samples, `(1 - k/n)^5` envelope, 0.65), mixed at the reference gains for heat 0.68, 5 s at 22.05 kHz mono 16-bit, with a 0.25 s equal-power crossfade so the loop is seamless. Seed 5919, so the file regenerates byte for byte.
+
+Playback uses `MediaPlayer` + `AudioOutput`, not `SoundEffect`: SoundEffect refused the 22.05 kHz mono format on PipeWire because it doesn't resample. Volume is `0.22 * (0.1 + heat * 0.6) / 0.508`, faded over 0.3 s. Playing requires sound on and the popup open; closing fades it out and stops the player, unload destroys it. No output device, a missing QtMultimedia, or a player error shows "Sound unavailable." and leaves it off. The sound itself has not been listened to on real speakers.
+
+## Font
+
+The reference asks for `ui-monospace, SFMono-Regular, Consolas, monospace`. On the target, `fc-match monospace` is JetBrainsMono Nerd Font Regular, and both Chromium and Qt resolve the generic `monospace` to it, so the popup uses `font.family: "monospace"` at 12 px (11 px for status and hint), regular weight, 2 px letter spacing on OMAFIRE.
+
+## Differences from the reference
+
+- Popup height is 381 px; the reference is 381.16 because its scene is 258.67 px tall. Here the scene is 259 px (rounded) and the hint box 16 px instead of 16.5, keeping borders on whole pixels. Text in the footer sits a fraction of a pixel differently.
+- Text antialiasing differs slightly (Qt vs Chromium rasterizer); header/footer pixels are within 24 levels for about 96-98%.
+- Hover brightens fill, border and text by 1.25 like CSS `brightness(1.25)`; press moves the button face down 1 px.
+- Keyboard focus ring (new): 1 px amber outline 3 px outside the focused button, shown only after Tab is used.
+- The bar glyph is a 12 x 12 pixel flame driven by the same fuel/heat/boost (new; replaces the prototype's placeholder glyph).
+- Wall-clock time while closed and across restarts, particle caps, persistence, IPC (new).
+- Kept on purpose: the drop rectangle is drawn inside drawFire after the `flameH < 3` early return, so dragging over a fully cold fire shows no dashed target, as in the reference. Status can show Resting while heat is still fading, as in the reference.
+- The reference's accelerated "Watch a burn cycle" mode is not included.
+
+## Tests
+
+`mise run test` (node 22+):
+
+| File | What |
+| --- | --- |
+| `tests/parity.test.js` | original reference script on a canvas emulator vs fire.js, every drawn frame, with add log, stoke, drag, poke, invalid drop; dirty-tile coverage |
+| `tests/chrome.test.js` | reference fragment in headless Chromium with a stubbed frame clock vs fire.js at the same frames |
+| `tests/scene.test.js` | background and closest frame vs `reference/approved-scene.png`; flame palette |
+| `tests/sim.test.js` | timings, actions, hit tests, status table, toast, dt cap, analytic advance, caps, persistence, icon |
+| `tests/package.test.js` | art hash, no symlinks, no machine paths, manifest rules, sound file regenerates |
+| `tests/qml.test.js` | qmltestrunner offscreen at 1x and 2x (`tests/qml/`): real mouse/key events, geometry, grabs, no warnings; grabbed scene compared with fire.js pixel for pixel; `omarchy plugin validate` |
+| `tests/integration.test.js` | real Quickshell with stand-ins for `qs.Ui`/`qs.Commons`: two bars share one fire, popup moves between bars, IPC, save/restore, corrupt state, long absence |
+| `tests/visual.test.js` | reference popup screenshots at 1x/2x vs the native grabs; side-by-sides in `tests/out/compare-*.png` |
+
+The Chromium, Quickshell and qmltestrunner tests skip when those tools aren't installed. `tests/reference/` holds the prototype script and fragment with the inline image data removed, plus the approved capture.
+
+## Not verified here
+
+- Running inside the live omarchy-shell bar (installation was left to Wes). The integration test uses stand-ins for `BarWidget`, `BarIconButton`, `KeyboardPanel`, `ShellIpc`, `Style`, `Border`.
+- Bottom/side bars, monitor edges, multiple real outputs, hot reload, and suspend on real hardware. The KeyboardPanel code handles these; OmaFire adds nothing that depends on bar position.
+- Audio on real speakers.
