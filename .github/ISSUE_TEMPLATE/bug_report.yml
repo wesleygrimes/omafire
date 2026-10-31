@@ -1,0 +1,48 @@
+name: Bug report
+description: Something about the fire, the popup, or the bar icon is wrong
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: input
+    id: omarchy-version
+    attributes:
+      label: Omarchy version
+      description: Output of `omarchy version`.
+    validations:
+      required: true
+  - type: input
+    id: plugin-commit
+    attributes:
+      label: OmaFire commit
+      description: Output of `git -C ~/.config/omarchy/plugins/wesleygrimes.omafire rev-parse --short HEAD`.
+    validations:
+      required: true
+  - type: input
+    id: display
+    attributes:
+      label: Monitor scale and GPU
+      description: For example, 2x scale on Intel Iris Xe. Rendering bugs often depend on scale.
+  - type: checkboxes
+    id: optional-packages
+    attributes:
+      label: Optional packages installed
+      options:
+        - label: qt6-imageformats (campsite art)
+        - label: qt6-multimedia (crackle sound)
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshot or log
+      description: A screenshot helps for anything visual. For errors, paste the Quickshell log lines that mention omafire.
+      render: text

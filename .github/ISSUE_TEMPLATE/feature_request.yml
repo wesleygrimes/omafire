@@ -1,0 +1,22 @@
+name: Feature request
+description: Propose a concrete change to OmaFire
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        OmaFire stays tiny on purpose. For open-ended ideas or questions, start in [Discussions](https://github.com/wesleygrimes/omafire/discussions). For anything bigger than a small fix, agree on the approach here before opening a pull request.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What should change, and why?
+      description: Describe what you'd see or do differently at the campfire.
+    validations:
+      required: true
+  - type: textarea
+    id: fit
+    attributes:
+      label: How does it stay small?
+      description: No network, no background service, no tracking. Say how your idea fits that.
+    validations:
+      required: true
