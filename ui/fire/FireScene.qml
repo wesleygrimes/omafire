@@ -32,13 +32,23 @@ Item {
     // 360 x 240 logical, and the decoder canvas is sized in device pixels
     // (720 x 480 divided by the ratio) and draws the art unscaled, so
     // getImageData returns it 1:1 (checked against ImageMagick's decode).
-    readonly property real dpr: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
+    // Ask the window, not Screen: with fractional scaling Screen reports the
+    // output's integer scale (2 at 1.33x) while the window really uses 1.33.
+    readonly property real dpr: Window.window && Window.window.devicePixelRatio > 0
+        ? Window.window.devicePixelRatio
+        : (Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1)
+    // A new layer-shell window passes through other ratios (2, then 1, then
+    // 1.33) before it settles, so art decoded at a stale one is decoded again.
+    property real decodedDpr: 0
+    onDprChanged: if (decodedDpr > 0 && decodedDpr !== dpr) { decodedDpr = 0; canvas.bg = null; }
 
     // Decodes the approved art once at its own 720 x 480 size; fire.js
     // samples it down to 360 x 240 exactly like the reference drawImage.
     Loader {
         id: decoder
-        active: canvas.bg === null
+        // Wait for a window: the art is decoded once and cached, so a decode
+        // at the wrong ratio would stick until the shell restarts.
+        active: canvas.bg === null && !!root.Window.window
         visible: false
         sourceComponent: Canvas {
             id: decodeCanvas
@@ -62,6 +72,7 @@ Item {
                 var px = ctx.getImageData(0, 0, 720, 480).data;
                 var src = new Uint8ClampedArray(720 * 480 * 4);
                 for (var i = 0; i < src.length; i++) src[i] = px[i];
+                root.decodedDpr = root.dpr;
                 canvas.bg = Fire.cacheBackground(Fire.prepareBackground(src, 720, 480));
                 canvas.repaintAll();
             }
