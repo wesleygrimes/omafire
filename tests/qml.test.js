@@ -78,6 +78,30 @@ for (const scale of [1, 2]) {
     }
     console.log(`# ${scale}x whole scene: ${(100 * same / n).toFixed(2)}% of canvas pixels match fire.js at the same state`);
     assert.ok(same / n > 0.999, "the native scene shows exactly the fire.js frame");
+
+    // tst_lifecycle.qml: after the window hides and shows, the scene moves
+    // window, or the canvas is rebuilt around the same fire, every pixel of
+    // the scene must still be the fire.js frame (not just the parts that
+    // animate). Grabs are of the scene item alone.
+    const cases = [["first", 238], ["reshow", 250], ["reshow2", 262], ["moved", 274], ["rebuilt", 286], ["redecoded", 292], ["rebuilt-hidden", 298], ["released", 310]];
+    for (const [name, steps] of cases) {
+      const shot = readRGBA(path.join(OUT, `life-${name}-${scale}x.png`));
+      assert.equal(shot.width, 388 * scale, `life-${name} width`);
+      const st = Fire.createState();
+      for (let i = 0; i < steps; i++) Fire.update(st, 1 / 60);
+      Fire.render(fb, st, bg);
+      let ok = 0, total = 0, worst = 0;
+      for (let cy = 0; cy < 240; cy++) for (let cx = 0; cx < 360; cx++) {
+        const gx = Math.floor((cx + 0.5) * 388 / 360 * scale), gy = Math.floor((cy + 0.5) * 259 / 240 * scale);
+        const gi = (gy * shot.width + gx) * 4, bi = (cy * 360 + cx) * 4;
+        const d = Math.max(Math.abs(shot.data[gi] - fb[bi]), Math.abs(shot.data[gi + 1] - fb[bi + 1]), Math.abs(shot.data[gi + 2] - fb[bi + 2]));
+        total++;
+        if (d <= 1) ok++;
+        if (d > worst) worst = d;
+      }
+      console.log(`# ${scale}x lifecycle ${name}: ${(100 * ok / total).toFixed(2)}% of canvas pixels match fire.js (worst ${worst})`);
+      assert.ok(ok / total > 0.999, `scene after "${name}" shows the whole fire.js frame`);
+    }
   });
 }
 
