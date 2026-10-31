@@ -24,13 +24,18 @@ jobs:
       - name: Install test tools
         run: pacman -Syu --noconfirm git nodejs python imagemagick chromium ttf-dejavu qt6-declarative qt6-imageformats qt6-multimedia pulseaudio
       - name: Start a silent audio server for Qt Multimedia
-        run: pulseaudio --daemonize --exit-idle-time=-1 --load=module-null-sink
+        run: |
+          pulseaudio --system --daemonize --disallow-exit -n \
+            --load=module-null-sink \
+            --load="module-native-protocol-unix auth-anonymous=1 socket=/tmp/pulse.sock"
+          PULSE_SERVER=unix:/tmp/pulse.sock pactl info
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Tests (Quickshell and omarchy validate skip outside a desktop)
         env:
           QT_QPA_PLATFORM: offscreen
+          PULSE_SERVER: unix:/tmp/pulse.sock
         run: node --test --test-concurrency=1 'tests/*.test.js'
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
