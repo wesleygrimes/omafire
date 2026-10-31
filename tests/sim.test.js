@@ -239,4 +239,18 @@ test("bar icon cells follow the fire", () => {
   const embers = Fire.iconCells(0.05, 0, 0.02, 1.3);
   assert.equal(embers.filter(c => c >= 1 && c <= 6).length, 0);
   assert.ok(embers.some(c => c >= 7 && c <= 9), "embers glow");
+
+  // Optical box: logs span the full 12 cells on the bottom row; a steady
+  // flame reaches row 2 or higher and a stoked one the top two rows, centred
+  // on the 12-cell width (columns balance within one cell).
+  const N = Fire.ICON_SIZE;
+  const rows = cells => cells.map((c, i) => c >= 1 && c <= 6 ? Math.floor(i / N) : N).reduce((a, b) => Math.min(a, b), N);
+  for (const t of [0.3, 1.3, 2.9]) {
+    assert.ok(rows(Fire.iconCells(0.68, 0, 0.68, t)) <= 2, `steady flame is tall at t=${t}`);
+    assert.ok(rows(Fire.iconCells(1, 1.1, 1, t)) <= 1, `stoked flame reaches the top at t=${t}`);
+  }
+  assert.deepEqual(Array.from(resting.slice(11 * N)), new Array(N).fill(10), "logs span the box");
+  const cols = lit.map((c, i) => c >= 1 && c <= 6 ? i % N : -1).filter(x => x >= 0);
+  const mid = cols.reduce((a, b) => a + b, 0) / cols.length;
+  assert.ok(Math.abs(mid - (N - 1) / 2) < 1, `flame is centred (${mid.toFixed(2)})`);
 });

@@ -690,19 +690,25 @@ function render(fb, s, bg, rects) {
 var ICON_SIZE = 12;
 var ICON_COLORS = [null, "#fff0a7", "#ffd36e", "#ffae3c", "#f37828", "#d5471d", "#91341f", "#ffc05b", "#db6328", "#733021", "#74472b"];
 
+//
+// Layout: crossed logs on rows 10-11 spanning columns 0-11, coals between the
+// log ends on row 10, and a flame rising from row 10 that reaches row 2 at a
+// steady burn and the top row when stoked, so a lit icon fills the same
+// 12 x 12 box as the bar's 12 px glyphs instead of sitting low in it.
 function iconCells(heat, boost, fuel, t) {
     var N = ICON_SIZE, out = [], x, y;
     for (x = 0; x < N * N; x++) out.push(0);
-    // Two short logs.
-    for (x = 2; x < 10; x++) { out[11 * N + x] = 10; }
+    // Two crossed logs: a full-width bottom row, raised ends on row 10.
+    for (x = 0; x < N; x++) out[11 * N + x] = 10;
+    out[10 * N + 0] = out[10 * N + 1] = out[10 * N + 10] = out[10 * N + 11] = 10;
     var hot = Math.min(1, heat * 3);
-    // Coals along the log.
-    for (x = 3; x < 9; x++) {
+    // Coals between the log ends.
+    for (x = 2; x < 10; x++) {
         var g = (0.4 + 0.6 * Math.max(0, Math.sin(t * 1.4 + x * 1.7))) * hot;
         if (fuel > 0.01 || heat > 0.02) out[10 * N + x] = g > 0.6 ? 7 : g > 0.3 ? 8 : 9;
     }
     var alive = Math.min(1, heat * 1.6);
-    var fh = (3 + heat * 5 + boost * 2) * alive, fw = (2.6 + heat * 1.6 + boost * 0.5) * alive;
+    var fh = (6 + heat * 4.5 + boost * 1.5) * alive, fw = (3 + heat * 1.6 + boost * 0.5) * alive;
     if (fh < 1.2) return out;
     var cx = 5.5, base = 10;
     for (y = 0; y < base; y++) {
