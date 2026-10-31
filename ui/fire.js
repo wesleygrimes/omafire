@@ -449,36 +449,110 @@ function drawFire(fb, s, t) {
         var col = glow > 0.6 ? C.e0 : glow > 0.3 ? C.e1 : C.e2;
         fillRect(fb, Math.floor(e.x), Math.floor(e.y), e.s, e.s, col, Math.min(1, 0.3 + glow));
     }
+    markDirty(BASE_X - 73, BASE_Y - 22, BASE_X + 76, BASE_Y + 35);
     if (flameH < 3) return;
-    // Flame field.
+    drawFlame(fb, t, flameH, flameW);
+    if (s.drag) {
+        strokeDashedRect(fb, BASE_X - 39, BASE_Y - 38, 78, 54, C.drop, 0.75);
+        markDirty(BASE_X - 40, BASE_Y - 39, BASE_X + 41, BASE_Y + 18);
+    }
+}
+
+// The reference flame loop. Same arithmetic, reorganized for speed:
+// - noise() is inlined; its lattice coordinates depend only on the column (x)
+//   or only on the row (y), so they and the hash() rows are computed once per
+//   column or row instead of four times per cell. Values are bit-identical.
+// - Cells that cannot pass the edge test are skipped before evaluating noise:
+//   n < 1, so edge < taper - |nx| + 0.425.
+function drawFlame(fb, t, flameH, flameW) {
+    var x, y, k;
     var yStart = Math.floor(BASE_Y - flameH);
     var xStart = Math.floor(BASE_X - flameW - 11), xEnd = BASE_X + flameW + 11;
+    var cols = Math.floor(xEnd) - xStart + 1;
     var t03 = t * 0.3, t33 = t * 3.3, t05 = t * 0.5, t58 = t * 5.8, t31 = t * 3.1, t2 = t * 2;
+    var ix1 = [], fx1 = [], ix2 = [], fx2 = [];
+    var min1 = 1e9, max1 = -1e9, min2 = 1e9, max2 = -1e9;
+    for (k = 0; k < cols; k++) {
+        x = xStart + k;
+        var X1 = x * 0.19 + t03, X2 = x * 0.43 - t05;
+        var i1 = Math.floor(X1), i2 = Math.floor(X2), f1 = X1 - i1, f2 = X2 - i2;
+        ix1.push(i1); fx1.push(f1 * f1 * (3 - 2 * f1));
+        ix2.push(i2); fx2.push(f2 * f2 * (3 - 2 * f2));
+        if (i1 < min1) min1 = i1; if (i1 > max1) max1 = i1;
+        if (i2 < min2) min2 = i2; if (i2 > max2) max2 = i2;
+    }
+    var n1 = max1 - min1 + 2, n2 = max2 - min2 + 2;
+    var hA1 = new Array(n1), hB1 = new Array(n1), hA2 = new Array(n2), hB2 = new Array(n2);
+    var top = H, bottom = -1, left = W, right = -1;
     for (y = yStart; y < BASE_Y + 1; y++) {
         var v = (BASE_Y - y) / flameH;
-        if (v > 1) continue;
+        if (v > 1 || y < 0 || y >= H) continue;
         var sway = Math.sin(v * 7 - t31) * v * 7 + Math.sin(v * 12 + t2) * v * 3;
         var taper = Math.pow(Math.max(0, 1 - v), 0.8);
-        var ny1 = y * 0.12 + t33, ny2 = y * 0.31 + t58;
-        if (y < 0 || y >= H) continue;
-        for (x = xStart; x <= xEnd; x++) {
+        var Y1 = y * 0.12 + t33, Y2 = y * 0.31 + t58;
+        var iy1 = Math.floor(Y1), iy2 = Math.floor(Y2), g1 = Y1 - iy1, g2 = Y2 - iy2;
+        var fy1 = g1 * g1 * (3 - 2 * g1), fy2 = g2 * g2 * (3 - 2 * g2);
+        var rowReady = false;
+        var shade = (1 - v) * 0.28, rowBase = y * W;
+        for (k = 0; k < cols; k++) {
+            x = xStart + k;
             var nx = (x - BASE_X - sway) / flameW;
-            var n = noise(x * 0.19 + t03, ny1) * 0.65 + noise(x * 0.43 - t05, ny2) * 0.35;
-            var edge = taper - Math.abs(nx) + (n - 0.5) * 0.85;
+            var reach = taper - Math.abs(nx);
+            if (reach + 0.43 <= 0.025) continue;
+            if (!rowReady) {
+                for (var j = 0; j < n1; j++) { hA1[j] = hash(min1 + j, iy1); hB1[j] = hash(min1 + j, iy1 + 1); }
+                for (j = 0; j < n2; j++) { hA2[j] = hash(min2 + j, iy2); hB2[j] = hash(min2 + j, iy2 + 1); }
+                rowReady = true;
+            }
+            var o1 = ix1[k] - min1, o2 = ix2[k] - min2, fa = fx1[k], fb2 = fx2[k];
+            var a = hA1[o1], b = hA1[o1 + 1], c = hB1[o1], d = hB1[o1 + 1];
+            var na = a + (b - a) * fa + (c - a) * fy1 + (a - b - c + d) * fa * fy1;
+            a = hA2[o2]; b = hA2[o2 + 1]; c = hB2[o2]; d = hB2[o2 + 1];
+            var nb = a + (b - a) * fb2 + (c - a) * fy2 + (a - b - c + d) * fb2 * fy2;
+            var n = na * 0.65 + nb * 0.35;
+            var edge = reach + (n - 0.5) * 0.85;
             if (edge <= 0.025) continue;
-            var core = edge * 0.85 + (1 - v) * 0.28;
-            var fc = core > 0.98 ? C.f0 : core > 0.78 ? C.f1 : core > 0.53 ? C.f2 : core > 0.31 ? C.f3 : core > 0.14 ? C.f4 : C.f5;
             if (x < 0 || x >= W) continue;
-            blend(fb, (y * W + x) * 4, fc, edge < 0.09 ? 0.75 : 1);
+            var core = edge * 0.85 + shade;
+            var fc = core > 0.98 ? C.f0 : core > 0.78 ? C.f1 : core > 0.53 ? C.f2 : core > 0.31 ? C.f3 : core > 0.14 ? C.f4 : C.f5;
+            var i = (rowBase + x) * 4;
+            if (edge < 0.09) {
+                fb[i] = fc[0] * 0.75 + fb[i] * 0.25;
+                fb[i + 1] = fc[1] * 0.75 + fb[i + 1] * 0.25;
+                fb[i + 2] = fc[2] * 0.75 + fb[i + 2] * 0.25;
+            } else {
+                fb[i] = fc[0]; fb[i + 1] = fc[1]; fb[i + 2] = fc[2];
+            }
+            if (y < top) top = y; if (y > bottom) bottom = y;
+            if (x < left) left = x; if (x > right) right = x;
         }
     }
-    if (s.drag) strokeDashedRect(fb, BASE_X - 39, BASE_Y - 38, 78, 54, C.drop, 0.75);
+    if (bottom >= 0) markDirty(left, top, right + 1, bottom + 1);
+}
+
+// native: the box of pixels this frame drew over the background, apart from
+// the stars (see starPixels). Lets the canvas copy only what changed.
+var _dirty = [W, H, 0, 0];
+function markDirty(x0, y0, x1, y1) {
+    if (x0 < _dirty[0]) _dirty[0] = Math.max(0, Math.floor(x0));
+    if (y0 < _dirty[1]) _dirty[1] = Math.max(0, Math.floor(y0));
+    if (x1 > _dirty[2]) _dirty[2] = Math.min(W, Math.ceil(x1));
+    if (y1 > _dirty[3]) _dirty[3] = Math.min(H, Math.ceil(y1));
+}
+
+// Pixel offsets (into an RGBA buffer) of the twinkling stars.
+function starPixels(s) {
+    var out = [];
+    for (var i = 0; i < s.stars.length; i++) out.push((Math.floor(s.stars[i].y) * W + Math.floor(s.stars[i].x)) * 4);
+    return out;
 }
 
 // The reference draw(), into fb. bg is a prepared 360 x 240 RGBA buffer or
-// null for the reference's fallback fill.
+// null for the reference's fallback fill. Returns the dirty box
+// [x0, y0, x1, y1) of everything except the stars.
 function render(fb, s, bg) {
     var i, p;
+    _dirty = [W, H, 0, 0];
     if (bg) fb.set(bg);
     else fillRect(fb, 0, 0, W, H, C.empty, 1);
     var t = s.elapsed;
@@ -488,20 +562,37 @@ function render(fb, s, bg) {
     }
     for (i = 0; i < s.smoke.length; i++) {
         p = s.smoke[i];
-        var r = 2 + p.age * 1.3;
-        fillRect(fb, Math.floor(p.x), Math.floor(p.y), Math.round(r), Math.round(r * 1.8), C.smoke, 0.04 * Math.sin(Math.PI * p.age / p.life));
+        var r = 2 + p.age * 1.3, sx = Math.floor(p.x), sy = Math.floor(p.y), sw = Math.round(r), sh = Math.round(r * 1.8);
+        fillRect(fb, sx, sy, sw, sh, C.smoke, 0.04 * Math.sin(Math.PI * p.age / p.life));
+        markDirty(sx, sy, sx + sw, sy + sh);
     }
     drawFire(fb, s, t);
     for (i = 0; i < s.sparks.length; i++) {
         p = s.sparks[i];
-        fillRect(fb, Math.round(p.x), Math.round(p.y), p.s, p.s, p.age < 0.5 ? C.sparkHot : C.sparkCool, Math.max(0, 1 - p.age / p.life));
+        var px = Math.round(p.x), py = Math.round(p.y);
+        fillRect(fb, px, py, p.s, p.s, p.age < 0.5 ? C.sparkHot : C.sparkCool, Math.max(0, 1 - p.age / p.life));
+        markDirty(px, py, px + p.s, py + p.s);
     }
+    var lx, ly;
     if (s.flight) {
         var pr = Math.min(1, s.flight.age / FLIGHT_SECONDS), ease = 1 - (1 - pr) * (1 - pr);
-        drawLog(fb, s.flight.fromX + (BASE_X - s.flight.fromX) * ease,
-            s.flight.fromY + (BASE_Y - s.flight.fromY) * ease - Math.sin(pr * Math.PI) * 45, pr * 0.4);
+        lx = s.flight.fromX + (BASE_X - s.flight.fromX) * ease;
+        ly = s.flight.fromY + (BASE_Y - s.flight.fromY) * ease - Math.sin(pr * Math.PI) * 45;
+        drawLog(fb, lx, ly, pr * 0.4);
+        markDirty(Math.round(lx) - 23, Math.round(ly) - 23, Math.round(lx) + 24, Math.round(ly) + 24);
     }
-    if (s.drag) drawLog(fb, s.drag.x, s.drag.y, -0.22);
+    if (s.drag) {
+        drawLog(fb, s.drag.x, s.drag.y, -0.22);
+        markDirty(Math.round(s.drag.x) - 23, Math.round(s.drag.y) - 23, Math.round(s.drag.x) + 24, Math.round(s.drag.y) + 24);
+    }
+    return _dirty[2] > _dirty[0] && _dirty[3] > _dirty[1] ? _dirty.slice() : null;
+}
+
+// Union of two dirty boxes (either may be null).
+function unionBox(a, b) {
+    if (!a) return b ? b.slice() : null;
+    if (!b) return a.slice();
+    return [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])];
 }
 
 // ---------------------------------------------------------------- bar icon
@@ -554,6 +645,7 @@ if (typeof module !== "undefined" && module.exports) {
         update: update, advanceAnalytic: advanceAnalytic, tick: tick, status: status, statusIndex: statusIndex,
         serialize: serialize, restore: restore,
         createFrame: createFrame, prepareBackground: prepareBackground, render: render, drawLog: drawLog,
+        starPixels: starPixels, unionBox: unionBox,
         iconCells: iconCells, ICON_SIZE: ICON_SIZE, ICON_COLORS: ICON_COLORS
     };
 }
