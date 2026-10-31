@@ -25,8 +25,8 @@ jobs:
         run: pacman -Syu --noconfirm git nodejs python imagemagick chromium ttf-dejavu qt6-declarative qt6-imageformats qt6-multimedia pulseaudio
       - name: Start a silent audio server for Qt Multimedia
         run: |
-          systemd-sysusers
-          mkdir -p /var/run/pulse
+          groupadd --system pulse-access
+          useradd --system --user-group --home-dir /var/run/pulse --create-home pulse
           pulseaudio --system --disallow-exit -n --log-target=stderr \
             --load=module-null-sink \
             --load="module-native-protocol-unix auth-anonymous=1 socket=/tmp/pulse.sock" \
