@@ -25,10 +25,13 @@ jobs:
         run: pacman -Syu --noconfirm git nodejs python imagemagick chromium ttf-dejavu qt6-declarative qt6-imageformats qt6-multimedia pulseaudio
       - name: Start a silent audio server for Qt Multimedia
         run: |
-          pulseaudio --system --daemonize --disallow-exit -n \
+          mkdir -p /var/run/pulse
+          pulseaudio --system --disallow-exit -n --log-target=stderr \
             --load=module-null-sink \
-            --load="module-native-protocol-unix auth-anonymous=1 socket=/tmp/pulse.sock"
-          PULSE_SERVER=unix:/tmp/pulse.sock pactl info
+            --load="module-native-protocol-unix auth-anonymous=1 socket=/tmp/pulse.sock" \
+            > /tmp/pulse.log 2>&1 &
+          for _ in $(seq 20); do [ -S /tmp/pulse.sock ] && break; sleep 0.5; done
+          PULSE_SERVER=unix:/tmp/pulse.sock pactl info || { cat /tmp/pulse.log; exit 1; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
