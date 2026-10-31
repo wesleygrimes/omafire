@@ -29,8 +29,23 @@ FocusScope {
     height: implicitHeight
     focus: true
 
+    // Tab and Backtab cycle the footer buttons here rather than through
+    // KeyNavigation on the buttons, which would consume the key before this
+    // handler sees it and leave the ring hidden after a pointer click.
+    function focusNext(step) {
+        var buttons = [addButton, stokeButton, soundButton], i = -1;
+        for (var k = 0; k < buttons.length; k++) if (buttons[k].activeFocus) i = k;
+        var j = i < 0 ? (step > 0 ? 0 : buttons.length - 1) : (i + step + buttons.length) % buttons.length;
+        buttons[j].forceActiveFocus(step > 0 ? Qt.TabFocusReason : Qt.BacktabFocusReason);
+    }
+
     Keys.onPressed: function (event) {
-        if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) { keyboardFocusVisible = true; return; }
+        if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
+            keyboardFocusVisible = true;
+            focusNext(event.key === Qt.Key_Tab && !(event.modifiers & Qt.ShiftModifier) ? 1 : -1);
+            event.accepted = true;
+            return;
+        }
         if (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) return;
         if (event.key === Qt.Key_A) { fire.addLog(); event.accepted = true; }
         else if (event.key === Qt.Key_S) { fire.stoke(); event.accepted = true; }
@@ -122,7 +137,7 @@ FocusScope {
                 ink: "#e9ab55"
                 fontFamily: root.fontFamily
                 showFocusRing: root.keyboardFocusVisible
-                KeyNavigation.tab: stokeButton
+                onPointerPressed: root.keyboardFocusVisible = false
                 onClicked: root.fire.addLog()
             }
             FireButton {
@@ -132,8 +147,7 @@ FocusScope {
                 text: "Stoke"
                 fontFamily: root.fontFamily
                 showFocusRing: root.keyboardFocusVisible
-                KeyNavigation.tab: soundButton
-                KeyNavigation.backtab: addButton
+                onPointerPressed: root.keyboardFocusVisible = false
                 onClicked: root.fire.stoke()
             }
             FireButton {
@@ -144,8 +158,7 @@ FocusScope {
                 pressedLook: root.fire.sound
                 fontFamily: root.fontFamily
                 showFocusRing: root.keyboardFocusVisible
-                KeyNavigation.tab: addButton
-                KeyNavigation.backtab: stokeButton
+                onPointerPressed: root.keyboardFocusVisible = false
                 onClicked: root.fire.toggleSound()
             }
         }
@@ -164,7 +177,8 @@ FocusScope {
         }
     }
 
-    // Any pointer use hides the keyboard focus ring again.
+    // Any pointer use hides the keyboard focus ring again (the buttons'
+    // MouseAreas take their presses first, so they report them above).
     PointHandler {
         onActiveChanged: if (active) root.keyboardFocusVisible = false
     }

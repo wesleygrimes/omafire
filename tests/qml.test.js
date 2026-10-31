@@ -38,6 +38,7 @@ for (const scale of [1, 2]) {
     fs.writeFileSync(path.join(OUT, `qml-${scale}x.log`), output);
     assert.equal(r.status, 0, output);
     assert.match(output, /Totals: \d+ passed, 0 failed/);
+    assert.match(output, /PASS\s+: focus::test_tab_after_click_shows_ring\(\)/, "tst_focus.qml ran");
     const problems = output.split("\n").filter(l =>
       (/^(QWARN|QCRITICAL|QFATAL)/.test(l) || /\.qml:\d+/.test(l) || /^\s*(Warning|Error)/i.test(l)) && !AUDIO_ENV.some(re => re.test(l)));
     assert.deepEqual(problems, [], "no QML warnings or errors");

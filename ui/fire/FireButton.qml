@@ -18,8 +18,11 @@ Item {
     property bool showFocusRing: false
 
     signal clicked()
+    signal pointerPressed()
 
-    activeFocusOnTab: true
+    // The popup moves focus on Tab itself (FirePopup.focusNext), so it always
+    // sees the key and can show the ring.
+    activeFocusOnTab: false
     implicitHeight: 36
 
     function brighten(c, k) {
@@ -73,6 +76,7 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
+        onPressed: root.pointerPressed()
         onClicked: root.clicked()
     }
 }
