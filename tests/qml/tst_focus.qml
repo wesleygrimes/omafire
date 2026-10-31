@@ -17,8 +17,9 @@ Item {
         name: "focus"
         when: windowShown
 
+        function init() { popup.resetFocus(); }
+
         function test_tab_after_click_shows_ring() {
-            popup.forceActiveFocus();
             verify(!popup.keyboardFocusVisible, "ring starts hidden");
 
             keyClick(Qt.Key_Tab);
@@ -43,6 +44,18 @@ Item {
 
             keyClick(Qt.Key_Tab);
             verify(popup.addButton.activeFocus, "Tab wraps to the first button");
+        }
+
+        function test_reopen_starts_fresh() {
+            keyClick(Qt.Key_Tab);
+            keyClick(Qt.Key_Tab);
+            verify(popup.keyboardFocusVisible && popup.stokeButton.activeFocus);
+            popup.running = false;
+            popup.running = true;
+            verify(!popup.keyboardFocusVisible, "reopening hides the ring");
+            verify(!popup.stokeButton.activeFocus, "and no button keeps focus");
+            keyClick(Qt.Key_Tab);
+            verify(popup.addButton.activeFocus, "so the first Tab lands on Add log");
         }
     }
 }

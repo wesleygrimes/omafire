@@ -29,6 +29,17 @@ FocusScope {
     height: implicitHeight
     focus: true
 
+    // Each open starts like a fresh page: no ring, and the first Tab lands
+    // on Add log.
+    function resetFocus() {
+        keyboardFocusVisible = false;
+        addButton.focus = false;
+        stokeButton.focus = false;
+        soundButton.focus = false;
+        forceActiveFocus();
+    }
+    onRunningChanged: if (running) resetFocus()
+
     // Tab and Backtab cycle the footer buttons here rather than through
     // KeyNavigation on the buttons, which would consume the key before this
     // handler sees it and leave the ring hidden after a pointer click.
