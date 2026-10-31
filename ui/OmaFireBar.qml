@@ -20,11 +20,23 @@ BarWidget {
     function close() { if (session.owner === root) session.closePopup(); }
     function closeForPopoutSwitch() { popoutSwitchClosing = true; close(); }
 
+    // Hover tooltip through the host bar, like the first-party widgets:
+    // "OmaFire: Burning steadily", kept current while hovered, hidden on
+    // exit and whenever the popup is open.
+    readonly property string tooltipText: "OmaFire: " + (session.fire ? session.fire.statusText.replace(/^[●○]\s*/, "") : "")
+    readonly property bool tooltipWanted: hover.hovered && !opened
+    function showTooltip() { if (bar && typeof bar.showTooltip === "function") bar.showTooltip(button, tooltipText); }
+    function hideTooltip() { if (bar && typeof bar.hideTooltip === "function") bar.hideTooltip(button); }
+    onTooltipWantedChanged: tooltipWanted ? showTooltip() : hideTooltip()
+    onTooltipTextChanged: if (tooltipWanted) showTooltip()
+
+    HoverHandler { id: hover }
+
     implicitWidth: button.implicitWidth
     implicitHeight: button.implicitHeight
 
     Component.onCompleted: session.register(root)
-    Component.onDestruction: session.unregister(root)
+    Component.onDestruction: { if (tooltipWanted) hideTooltip(); session.unregister(root); }
 
     BarIconButton {
         id: button
