@@ -77,65 +77,59 @@ Item {
 
         property var bg: null
         property var fb: Fire.createFrame()
-        property var lastBox: null
+        // What the canvas currently shows; alpha 0 marks "unknown" so every
+        // pixel is written again after a reset.
+        property var shown: new Uint8ClampedArray(Fire.W * Fire.H * 4)
+        property var lastTiles: null
         property bool dirtyAll: true
         property int frames: 0
 
-        // Changed pixels go up in 24 x 24 tiles, each with its own cached
-        // image. Qt 6.12's putImageData misplaces a dirty sub-rectangle (it
-        // crops, then offsets by the dirty origin again), so every put here
-        // is a whole tile image at its own position with a 0,0 origin.
-        readonly property int tile: 24
-        property var tiles: []
+        // Changed pixels go up in 24 x 24 tiles (fire.js flags the ones each
+        // frame touches), each with its own cached image, and only pixels that
+        // differ from what is shown are written. Qt 6.12's putImageData
+        // misplaces a dirty sub-rectangle (it crops, then offsets by the dirty
+        // origin again), so every put is a whole tile at its own position.
+        property var tileImages: []
 
         function tileImage(ctx, index) {
-            var img = tiles[index];
+            var img = tileImages[index];
             if (!img) {
-                img = ctx.createImageData(tile, tile);
+                img = ctx.createImageData(Fire.TILE, Fire.TILE);
                 // Qt keeps pixels premultiplied: set alpha before colour.
                 var d = img.data;
                 for (var a = 3; a < d.length; a += 4) d[a] = 255;
-                tiles[index] = img;
+                tileImages[index] = img;
             }
             return img;
         }
 
-        function putTile(ctx, tx, ty) {
-            var cols = Fire.W / tile;
-            var img = tileImage(ctx, ty * cols + tx);
-            var d = img.data, f = fb, W = Fire.W, x0 = tx * tile, y0 = ty * tile, j = 0;
-            for (var y = y0; y < y0 + tile; y++) {
-                for (var i = (y * W + x0) * 4, e = i + tile * 4; i < e; i += 4, j += 4) {
-                    d[j] = f[i]; d[j + 1] = f[i + 1]; d[j + 2] = f[i + 2];
+        function putTile(ctx, index) {
+            var T = Fire.TILE, W = Fire.W;
+            var tx = index % Fire.TILE_COLS, ty = (index - tx) / Fire.TILE_COLS;
+            var img = tileImage(ctx, index);
+            var d = img.data, f = fb, s = shown, x0 = tx * T, y0 = ty * T, j = 0, changed = false;
+            for (var y = y0; y < y0 + T; y++) {
+                for (var i = (y * W + x0) * 4, e = i + T * 4; i < e; i += 4, j += 4) {
+                    if (s[i + 3] === 0 || f[i] !== s[i] || f[i + 1] !== s[i + 1] || f[i + 2] !== s[i + 2]) {
+                        d[j] = f[i]; d[j + 1] = f[i + 1]; d[j + 2] = f[i + 2];
+                        s[i] = f[i]; s[i + 1] = f[i + 1]; s[i + 2] = f[i + 2]; s[i + 3] = 255;
+                        changed = true;
+                    }
                 }
             }
-            ctx.putImageData(img, x0, y0, 0, 0, tile, tile);
+            if (changed) ctx.putImageData(img, x0, y0, 0, 0, T, T);
         }
 
         onPaint: {
             if (!bg) return;
             var ctx = getContext("2d");
-            var box = Fire.render(fb, root.fire.sim, bg);
-            var u = dirtyAll ? [0, 0, Fire.W, Fire.H] : Fire.unionBox(box, lastBox);
-            lastBox = box;
+            var tiles = Fire.render(fb, root.fire.sim, bg);
+            if (dirtyAll) shown.fill(0);
+            for (var k = 0; k < tiles.length; k++) {
+                if (dirtyAll || tiles[k] || (lastTiles && lastTiles[k])) putTile(ctx, k);
+            }
+            lastTiles = tiles;
             dirtyAll = false;
-            var cols = Fire.W / tile, done = {}, tx, ty;
-            if (u) {
-                for (ty = Math.floor(u[1] / tile); ty * tile < u[3]; ty++)
-                    for (tx = Math.floor(u[0] / tile); tx * tile < u[2]; tx++) {
-                        putTile(ctx, tx, ty);
-                        done[ty * cols + tx] = true;
-                    }
-            }
-            var stars = Fire.starPixels(root.fire.sim);
-            for (var k = 0; k < stars.length; k++) {
-                var p = stars[k] / 4;
-                tx = Math.floor((p % Fire.W) / tile);
-                ty = Math.floor(Math.floor(p / Fire.W) / tile);
-                if (done[ty * cols + tx]) continue;
-                putTile(ctx, tx, ty);
-                done[ty * cols + tx] = true;
-            }
             frames++;
         }
     }

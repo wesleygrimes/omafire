@@ -26,15 +26,14 @@ function ours() {
       previous = now;
       Fire.update(s, dt);
       if (now - lastDraw > 50) {
-        const box = Fire.render(fb, s, bg);
+        const tiles = Fire.render(fb, s, bg);
         lastDraw = now;
-        // The dirty box plus the star pixels must cover every changed pixel.
-        const stars = new Set(Fire.starPixels(s));
+        // The dirty tiles must cover every pixel that differs from the art.
         for (let y = 0; y < 240; y++) for (let x = 0; x < 360; x++) {
           const i = (y * 360 + x) * 4;
-          if (stars.has(i) || (box && x >= box[0] && x < box[2] && y >= box[1] && y < box[3])) continue;
+          if (tiles[Math.floor(y / Fire.TILE) * Fire.TILE_COLS + Math.floor(x / Fire.TILE)]) continue;
           if (fb[i] !== bg[i] || fb[i + 1] !== bg[i + 1] || fb[i + 2] !== bg[i + 2])
-            assert.fail(`pixel ${x},${y} changed outside the dirty box ${box}`);
+            assert.fail(`pixel ${x},${y} changed outside the dirty tiles`);
         }
         return true;
       }

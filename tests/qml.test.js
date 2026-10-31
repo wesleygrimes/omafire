@@ -61,6 +61,23 @@ for (const scale of [1, 2]) {
     }
     console.log(`# ${scale}x scene background: ${(100 * same / n).toFixed(2)}% of sampled pixels match fire.js`);
     assert.ok(same / n > 0.999, "scene shows the approved art at canvas resolution");
+
+    // The capture is a deterministic state (238 steps of 1/60 s from the
+    // seed, see test_2_capture), so render it here and compare the whole
+    // scene: covers the incremental tile copy, not just the background.
+    const s = Fire.createState();
+    for (let i = 0; i < 238; i++) Fire.update(s, 1 / 60);
+    const fb = Fire.createFrame();
+    Fire.render(fb, s, bg);
+    same = 0; n = 0;
+    for (let cy = 0; cy < 240; cy++) for (let cx = 0; cx < 360; cx++) {
+      const gx = Math.floor((1 + (cx + 0.5) * 388 / 360) * scale), gy = Math.floor((38 + (cy + 0.5) * 259 / 240) * scale);
+      const gi = (gy * grab.width + gx) * 4, bi = (cy * 360 + cx) * 4;
+      n++;
+      if (Math.abs(grab.data[gi] - fb[bi]) <= 1 && Math.abs(grab.data[gi + 1] - fb[bi + 1]) <= 1 && Math.abs(grab.data[gi + 2] - fb[bi + 2]) <= 1) same++;
+    }
+    console.log(`# ${scale}x whole scene: ${(100 * same / n).toFixed(2)}% of canvas pixels match fire.js at the same state`);
+    assert.ok(same / n > 0.999, "the native scene shows exactly the fire.js frame");
   });
 }
 

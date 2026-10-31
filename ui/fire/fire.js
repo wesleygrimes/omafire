@@ -530,35 +530,29 @@ function drawFlame(fb, t, flameH, flameW) {
     if (bottom >= 0) markDirty(left, top, right + 1, bottom + 1);
 }
 
-// native: the box of pixels this frame drew over the background, apart from
-// the stars (see starPixels). Lets the canvas copy only what changed.
-var _dirty = [W, H, 0, 0];
+// native: which 24 x 24 tiles this frame drew into over the background, so
+// the canvas copies only those (plus last frame's, to restore them).
+var TILE = 24, TILE_COLS = W / TILE, TILE_ROWS = H / TILE;
+var _tiles = new Uint8Array(TILE_COLS * TILE_ROWS);
 function markDirty(x0, y0, x1, y1) {
-    if (x0 < _dirty[0]) _dirty[0] = Math.max(0, Math.floor(x0));
-    if (y0 < _dirty[1]) _dirty[1] = Math.max(0, Math.floor(y0));
-    if (x1 > _dirty[2]) _dirty[2] = Math.min(W, Math.ceil(x1));
-    if (y1 > _dirty[3]) _dirty[3] = Math.min(H, Math.ceil(y1));
-}
-
-// Pixel offsets (into an RGBA buffer) of the twinkling stars.
-function starPixels(s) {
-    var out = [];
-    for (var i = 0; i < s.stars.length; i++) out.push((Math.floor(s.stars[i].y) * W + Math.floor(s.stars[i].x)) * 4);
-    return out;
+    var tx0 = Math.max(0, Math.floor(x0 / TILE)), ty0 = Math.max(0, Math.floor(y0 / TILE));
+    var tx1 = Math.min(TILE_COLS - 1, Math.floor((Math.ceil(x1) - 1) / TILE)), ty1 = Math.min(TILE_ROWS - 1, Math.floor((Math.ceil(y1) - 1) / TILE));
+    for (var ty = ty0; ty <= ty1; ty++) for (var tx = tx0; tx <= tx1; tx++) _tiles[ty * TILE_COLS + tx] = 1;
 }
 
 // The reference draw(), into fb. bg is a prepared 360 x 240 RGBA buffer or
-// null for the reference's fallback fill. Returns the dirty box
-// [x0, y0, x1, y1) of everything except the stars.
+// null for the reference's fallback fill. Returns a new Uint8Array of tile
+// flags (TILE_COLS x TILE_ROWS, row-major): 1 where this frame drew.
 function render(fb, s, bg) {
     var i, p;
-    _dirty = [W, H, 0, 0];
+    _tiles = new Uint8Array(TILE_COLS * TILE_ROWS);
     if (bg) fb.set(bg);
     else fillRect(fb, 0, 0, W, H, C.empty, 1);
     var t = s.elapsed;
     for (i = 0; i < s.stars.length; i++) {
         var st = s.stars[i], sn = Math.sin(t * 0.7 + st.p);
         fillRect(fb, Math.floor(st.x), Math.floor(st.y), 1, 1, C.star, 0.25 + 0.4 * sn * sn);
+        markDirty(Math.floor(st.x), Math.floor(st.y), Math.floor(st.x) + 1, Math.floor(st.y) + 1);
     }
     for (i = 0; i < s.smoke.length; i++) {
         p = s.smoke[i];
@@ -585,14 +579,7 @@ function render(fb, s, bg) {
         drawLog(fb, s.drag.x, s.drag.y, -0.22);
         markDirty(Math.round(s.drag.x) - 23, Math.round(s.drag.y) - 23, Math.round(s.drag.x) + 24, Math.round(s.drag.y) + 24);
     }
-    return _dirty[2] > _dirty[0] && _dirty[3] > _dirty[1] ? _dirty.slice() : null;
-}
-
-// Union of two dirty boxes (either may be null).
-function unionBox(a, b) {
-    if (!a) return b ? b.slice() : null;
-    if (!b) return a.slice();
-    return [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])];
+    return _tiles;
 }
 
 // ---------------------------------------------------------------- bar icon
@@ -645,7 +632,7 @@ if (typeof module !== "undefined" && module.exports) {
         update: update, advanceAnalytic: advanceAnalytic, tick: tick, status: status, statusIndex: statusIndex,
         serialize: serialize, restore: restore,
         createFrame: createFrame, prepareBackground: prepareBackground, render: render, drawLog: drawLog,
-        starPixels: starPixels, unionBox: unionBox,
+        TILE: TILE, TILE_COLS: TILE_COLS, TILE_ROWS: TILE_ROWS,
         iconCells: iconCells, ICON_SIZE: ICON_SIZE, ICON_COLORS: ICON_COLORS
     };
 }
