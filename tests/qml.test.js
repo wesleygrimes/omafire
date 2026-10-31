@@ -30,7 +30,7 @@ function size(file) {
 for (const scale of [1, 2]) {
   test(`popup smoke test at ${scale}x`, { skip: !RUNNER && "qmltestrunner not installed", timeout: 120000 }, () => {
     fs.mkdirSync(OUT, { recursive: true });
-    const r = spawnSync("timeout", ["100", RUNNER, "-input", path.join(ROOT, "tests", "qml", "tst_popup.qml")], {
+    const r = spawnSync("timeout", ["100", RUNNER, "-input", path.join(ROOT, "tests", "qml")], {
       env: { ...process.env, QT_QPA_PLATFORM: "offscreen", QT_SCALE_FACTOR: String(scale), QT_ENABLE_HIGHDPI_SCALING: "1" },
       encoding: "utf8",
     });

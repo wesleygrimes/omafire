@@ -602,7 +602,7 @@ function iconCells(heat, boost, fuel, t) {
         if (fuel > 0.01 || heat > 0.02) out[10 * N + x] = g > 0.6 ? 7 : g > 0.3 ? 8 : 9;
     }
     var alive = Math.min(1, heat * 1.6);
-    var fh = (3 + heat * 5 + boost * 2) * alive, fw = (2.2 + heat * 1.6 + boost * 0.5) * alive;
+    var fh = (3 + heat * 5 + boost * 2) * alive, fw = (2.6 + heat * 1.6 + boost * 0.5) * alive;
     if (fh < 1.2) return out;
     var cx = 5.5, base = 10;
     for (y = 0; y < base; y++) {
