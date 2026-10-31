@@ -22,7 +22,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Install test tools
-        run: pacman -Syu --noconfirm git nodejs python imagemagick chromium ttf-dejavu qt6-declarative qt6-imageformats qt6-multimedia
+        run: pacman -Syu --noconfirm git nodejs python imagemagick chromium ttf-dejavu qt6-declarative qt6-imageformats qt6-multimedia pulseaudio
+      - name: Start a silent audio server for Qt Multimedia
+        run: pulseaudio --daemonize --exit-idle-time=-1 --load=module-null-sink
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
