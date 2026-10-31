@@ -15,7 +15,7 @@ ui/fire/                 plain QtQuick, no qs.* imports (renders standalone)
   FirePopup.qml          header, scene, footer, keys
   FireScene.qml          Canvas, pointer input, toast
   FireButton.qml         footer button
-  FireIcon.qml           12 x 12 bar flame
+  FireIcon.qml           12 x 12 bar campfire
   FireAudio.qml          QtMultimedia, created on first Sound press only
 assets/                  campsite-approved.webp (unchanged), crackle.wav (generated)
 scripts/gen-crackle.py   deterministic sound loop generator
@@ -82,6 +82,17 @@ Per frame, fire.js flags the tiles it drew into; the scene recopies those and la
 
 RSS is the whole standalone Quickshell process (Qt Quick and friends), not OmaFire's share inside the real shell. In-process timing: about 5.4 ms of JS render plus about 3 ms of tile copies per frame. Stepping the simulation at 20 Hz instead of 60 Hz made no measurable difference. These numbers need repeating on real hardware inside the live shell.
 
+## Live measurements
+
+Inside the live omarchy-shell on this VM, after the perf pass (9cbe5b6): `utime + stime` of the omarchy-shell process over 10 s, at 100 Hz clock ticks.
+
+| State | CPU (one core) |
+| --- | --- |
+| Popup open | 21.5% (about 29-30% before the perf pass) |
+| Popup closed | 0.9% |
+
+RSS is about 480 MB for the whole shell, not OmaFire's share.
+
 ## Sound
 
 `scripts/gen-crackle.py` follows the reference's Web Audio graph: brown noise (`(b + white * 0.035) / 1.02`, x4) through an RBJ 950 Hz lowpass, plus crackles (probability 0.00015 per sample, 90-790 samples, `(1 - k/n)^5` envelope, 0.65), mixed at the reference gains for heat 0.68, 5 s at 22.05 kHz mono 16-bit, with a 0.25 s equal-power crossfade so the loop is seamless. Seed 5919, so the file regenerates byte for byte.
@@ -97,8 +108,9 @@ The reference asks for `ui-monospace, SFMono-Regular, Consolas, monospace`. On t
 - Popup height is 381 px; the reference is 381.16 because its scene is 258.67 px tall. Here the scene is 259 px (rounded) and the hint box 16 px instead of 16.5, keeping borders on whole pixels. Text in the footer sits a fraction of a pixel differently.
 - Text antialiasing differs slightly (Qt vs Chromium rasterizer); header/footer pixels are within 24 levels for about 96-98%.
 - Hover brightens fill, border and text by 1.25 like CSS `brightness(1.25)`; press moves the button face down 1 px.
-- Keyboard focus ring (new): 1 px amber outline 3 px outside the focused button, shown only after Tab is used.
-- The bar glyph is a 12 x 12 pixel flame driven by the same fuel/heat/boost (new; replaces the prototype's placeholder glyph).
+- Keyboard focus ring (new): 1 px amber outline 3 px outside the focused button, shown after Tab or Backtab and hidden by any pointer press. The popup cycles the buttons on Tab itself so it always sees the key.
+- The bar glyph is a 12 x 12 pixel campfire driven by the same fuel/heat/boost (new; replaces the prototype's placeholder glyph). Crossed logs span the bottom two rows and the flame reaches row 2 at a steady burn and the top row when stoked, so it fills the same box as the bar's 12 px glyphs; each cell is one logical pixel (two device pixels at scale 2). Embers show only glowing coals, Resting only the logs.
+- Hovering the bar icon shows "OmaFire: <status>" through `bar.showTooltip`/`bar.hideTooltip`, hidden while the popup is open.
 - Wall-clock time while closed and across restarts, particle caps, persistence, IPC (new).
 - Kept on purpose: the drop rectangle is drawn inside drawFire after the `flameH < 3` early return, so dragging over a fully cold fire shows no dashed target, as in the reference. Status can show Resting while heat is still fading, as in the reference.
 - The reference's accelerated "Watch a burn cycle" mode is not included.
@@ -114,7 +126,7 @@ The reference asks for `ui-monospace, SFMono-Regular, Consolas, monospace`. On t
 | `tests/scene.test.js` | background and closest frame vs `reference/approved-scene.png`; flame palette |
 | `tests/sim.test.js` | timings, actions, hit tests, status table, toast, dt cap, analytic advance, caps, persistence, icon |
 | `tests/package.test.js` | art hash, no symlinks, no machine paths, manifest rules, sound file regenerates |
-| `tests/qml.test.js` | qmltestrunner offscreen at 1x and 2x (`tests/qml/`): real mouse/key events, geometry, grabs, no warnings; grabbed scene compared with fire.js pixel for pixel; `omarchy plugin validate` |
+| `tests/qml.test.js` | qmltestrunner offscreen at 1x and 2x (`tests/qml/`): real mouse/key events, focus ring after a click (`tst_focus.qml`), geometry, grabs, no warnings; grabbed scene compared with fire.js pixel for pixel; `omarchy plugin validate` |
 | `tests/integration.test.js` | real Quickshell with stand-ins for `qs.Ui`/`qs.Commons`: two bars share one fire, popup moves between bars, IPC, save/restore, corrupt state, long absence |
 | `tests/visual.test.js` | reference popup screenshots at 1x/2x vs the native grabs; side-by-sides in `tests/out/compare-*.png` |
 
