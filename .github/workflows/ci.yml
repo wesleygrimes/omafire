@@ -25,6 +25,7 @@ jobs:
         run: pacman -Syu --noconfirm git nodejs python imagemagick chromium ttf-dejavu qt6-declarative qt6-imageformats qt6-multimedia pulseaudio
       - name: Start a silent audio server for Qt Multimedia
         run: |
+          systemd-sysusers
           mkdir -p /var/run/pulse
           pulseaudio --system --disallow-exit -n --log-target=stderr \
             --load=module-null-sink \
