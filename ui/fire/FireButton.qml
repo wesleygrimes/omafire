@@ -76,7 +76,7 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onPressed: root.pointerPressed()
+        onPressed: { root.forceActiveFocus(Qt.MouseFocusReason); root.pointerPressed(); }
         onClicked: root.clicked()
     }
 }

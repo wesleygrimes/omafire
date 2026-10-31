@@ -3,7 +3,7 @@ import QtTest
 import "../../ui/fire"
 
 // The keyboard focus ring: a pointer click hides it, and the next Tab or
-// Backtab shows it again, whichever button has focus at the time.
+// Backtab shows it again, moving on from the button that was clicked.
 Item {
     id: host
     width: 420
@@ -25,23 +25,22 @@ Item {
             verify(popup.keyboardFocusVisible);
             verify(popup.addButton.activeFocus);
 
-            // A click hides the ring but leaves keyboard focus on the button.
+            // A click hides the ring and focuses the clicked button, like a
+            // browser button, so Tab continues from there.
             mouseClick(popup.stokeButton);
             verify(!popup.keyboardFocusVisible, "pointer use hides the ring");
-            verify(popup.addButton.activeFocus);
+            verify(popup.stokeButton.activeFocus, "the clicked button takes focus");
 
             keyClick(Qt.Key_Tab);
             verify(popup.keyboardFocusVisible, "Tab after a click shows the ring");
-            verify(popup.stokeButton.activeFocus, "and moves focus on");
+            verify(popup.soundButton.activeFocus, "and moves on from the clicked button");
 
             mouseClick(popup.addButton);
             verify(!popup.keyboardFocusVisible);
             keyClick(Qt.Key_Backtab);
             verify(popup.keyboardFocusVisible, "Backtab after a click shows the ring");
-            verify(popup.addButton.activeFocus, "and moves focus back");
-
-            keyClick(Qt.Key_Backtab);
             verify(popup.soundButton.activeFocus, "Backtab wraps to the last button");
+
             keyClick(Qt.Key_Tab);
             verify(popup.addButton.activeFocus, "Tab wraps to the first button");
         }
