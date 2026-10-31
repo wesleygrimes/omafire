@@ -37,13 +37,18 @@ QtObject {
     property real lastWall: Date.now()
     property var audioObject: null
 
+    property int statusIndex: -1
+
+    // Runs at 60 Hz while open, so it allocates nothing on the common path.
     function sync() {
-        var st = Fire.status(sim);
         fuel = sim.fuel;
         heat = sim.heat;
         boost = sim.boost;
         // Status text only changes when its state changes.
-        if (st.key !== statusKey) {
+        var index = Fire.statusIndex(sim);
+        if (index !== statusIndex) {
+            var st = Fire.status(sim);
+            statusIndex = index;
             statusKey = st.key;
             statusText = st.text;
             statusFilled = st.filled;
@@ -97,7 +102,7 @@ QtObject {
         var r = Fire.restore(text, Date.now());
         sim = r.state;
         lastWall = Date.now();
-        statusKey = "";
+        statusIndex = -1;
         sync();
         return r;
     }

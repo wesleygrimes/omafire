@@ -18,6 +18,7 @@ function ours() {
   const s = Fire.createState();
   const fb = Fire.createFrame();
   const bg = Fire.prepareBackground(bgSrc.data, bgSrc.width, bgSrc.height);
+  const rects = Fire.createRects();
   let previous = 0, lastDraw = 0;
   return {
     s, fb,
@@ -26,14 +27,19 @@ function ours() {
       previous = now;
       Fire.update(s, dt);
       if (now - lastDraw > 50) {
-        const tiles = Fire.render(fb, s, bg);
+        Fire.render(fb, s, bg, rects);
         lastDraw = now;
-        // The dirty tiles must cover every pixel that differs from the art.
+        // The dirty rectangles must cover every pixel that differs from the art.
+        const covered = new Uint8Array(360 * 240);
+        for (let k = 0; k < rects.n; k++) {
+          const [x0, y0, x1, y1] = rects.r.subarray(k * 4, k * 4 + 4);
+          for (let y = y0; y < y1; y++) covered.fill(1, y * 360 + x0, y * 360 + x1);
+        }
         for (let y = 0; y < 240; y++) for (let x = 0; x < 360; x++) {
           const i = (y * 360 + x) * 4;
-          if (tiles[Math.floor(y / Fire.TILE) * Fire.TILE_COLS + Math.floor(x / Fire.TILE)]) continue;
+          if (covered[y * 360 + x]) continue;
           if (fb[i] !== bg[i] || fb[i + 1] !== bg[i + 1] || fb[i + 2] !== bg[i + 2])
-            assert.fail(`pixel ${x},${y} changed outside the dirty tiles`);
+            assert.fail(`pixel ${x},${y} changed outside the dirty rectangles`);
         }
         return true;
       }

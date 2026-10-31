@@ -194,25 +194,26 @@ function update(s, dt) {
         s.smoke.push({ x: x, y: BASE_Y - 18, age: 0, life: life, p: p });
         capList(s.smoke, SMOKE_CAP);
     }
-    var i, p2, keep = [];
-    for (i = 0; i < s.sparks.length; i++) {
-        p2 = s.sparks[i];
+    // Expired particles are dropped in place (same order, no new arrays).
+    var i, p2, list = s.sparks, n = 0;
+    for (i = 0; i < list.length; i++) {
+        p2 = list[i];
         p2.age += dt;
         p2.x += p2.vx * dt + Math.sin(p2.age * 4) * dt * 5;
         p2.y += p2.vy * dt;
         p2.vy += dt * 3;
-        if (p2.age < p2.life) keep.push(p2);
+        if (p2.age < p2.life) list[n++] = p2;
     }
-    s.sparks = keep;
-    keep = [];
-    for (i = 0; i < s.smoke.length; i++) {
-        p2 = s.smoke[i];
+    list.length = n;
+    list = s.smoke; n = 0;
+    for (i = 0; i < list.length; i++) {
+        p2 = list[i];
         p2.age += dt;
         p2.y -= dt * 14;
         p2.x += Math.sin(p2.age * 2 + p2.p) * dt * 7;
-        if (p2.age < p2.life) keep.push(p2);
+        if (p2.age < p2.life) list[n++] = p2;
     }
-    s.smoke = keep;
+    list.length = n;
     if (s.flight) { s.flight.age += dt; if (s.flight.age > FLIGHT_SECONDS) s.flight = null; }
     if (s.elapsed > s.toastUntil) s.toastShown = false;
 }
@@ -314,7 +315,11 @@ function restore(text, nowMs) {
 // fill alpha times globalAlpha, and the separable 'screen' blend for the light
 // pool.
 
-function createFrame() { return new Uint8ClampedArray(W * H * 4); }
+function createFrame() {
+    var fb = new Uint8ClampedArray(W * H * 4);
+    for (var a = 3; a < fb.length; a += 4) fb[a] = 255;
+    return fb;
+}
 
 // Nearest sampling of an RGBA source onto 360 x 240, like drawImage with
 // imageSmoothingEnabled = false. Destination pixel centres map into the
@@ -336,6 +341,18 @@ function prepareBackground(src, sw, sh) {
         }
     }
     return out;
+}
+
+// native: the prepared art, kept by the library (one instance per engine) so
+// a popup rebuilt on plugin reload doesn't decode it again.
+var _background = null;
+function cachedBackground() { return _background; }
+function cacheBackground(bg) { _background = bg; return bg; }
+
+// ToUint8Clamp for 0 <= x <= 255: round half to even. x - (x | 0) is exact.
+function roundByte(x) {
+    var f = x | 0, d = x - f;
+    return d > 0.5 || (d === 0.5 && (f & 1)) ? f + 1 : f;
 }
 
 function blend(fb, i, c, a) {
@@ -425,31 +442,54 @@ function drawFire(fb, s, t) {
     var flameH = (24 + heat * 46 + boost * 20) * alive, flameW = (17 + heat * 12 + boost * 5) * alive;
     var flick = 0.86 + Math.sin(t * 9) * 0.07 + Math.sin(t * 16.2) * 0.04;
     var x, y, i;
-    // Warm light pool, 'screen' composite.
-    var L = C.light;
-    for (y = BASE_Y - 22; y < BASE_Y + 34; y += 3) for (x = BASE_X - 73; x < BASE_X + 74; x += 3) {
-        var dx = (x - BASE_X) / 76, dy = (y - BASE_Y - 1) / 30;
-        var d = dx * dx + dy * dy;
-        var m = Math.max(0, 1 - d);
-        var a = m * m * 0.19 * flick * alive;
-        if (a > 0.004) {
-            for (var yy = y; yy < y + 3 && yy < H; yy++) for (var xx = x; xx < x + 3 && xx < W; xx++) {
-                i = (yy * W + xx) * 4;
-                fb[i] = fb[i] + a * L[0] * (255 - fb[i]) / 255;
-                fb[i + 1] = fb[i + 1] + a * L[1] * (255 - fb[i + 1]) / 255;
-                fb[i + 2] = fb[i + 2] + a * L[2] * (255 - fb[i + 2]) / 255;
+    // Warm light pool, 'screen' composite. Each 3 x 3 block has one alpha;
+    // a * L[c] is the leftmost product of the reference expression
+    // fb + a * L[c] * (255 - fb) / 255, so hoisting it keeps every value.
+    var L0 = C.light[0], L1 = C.light[1], L2 = C.light[2], u = view32(fb);
+    for (y = BASE_Y - 22; y < BASE_Y + 34; y += 3) {
+        // Dirty span of this band of blocks (the pool is an ellipse).
+        var lx0 = W, lx1 = -1;
+        var dy = (y - BASE_Y - 1) / 30, dy2 = dy * dy, yEnd = Math.min(y + 3, H);
+        for (x = BASE_X - 73; x < BASE_X + 74; x += 3) {
+            var dx = (x - BASE_X) / 76;
+            var d = dx * dx + dy2;
+            var m = Math.max(0, 1 - d);
+            var a = m * m * 0.19 * flick * alive;
+            if (!(a > 0.004)) continue;
+            var a0 = a * L0, a1 = a * L1, a2 = a * L2, xEnd = Math.min(x + 3, W), e4;
+            // A pixel is read and written as one word; each channel's result
+            // is rounded the way a Uint8ClampedArray store rounds (half to
+            // even; the value is already within 0..255) and reused while its
+            // input repeats (pixel art has runs).
+            var pr = -1, pg = -1, pb = -1, or = 0, og = 0, ob = 0, q;
+            for (var yy = y; yy < yEnd; yy++) {
+                for (var p = yy * W + x, pe = yy * W + xEnd; p < pe; p++) {
+                    var v = u[p], r = v & 255, g = (v >>> 8) & 255, b = (v >>> 16) & 255;
+                    // roundByte(), inlined: calls are dear in the QML engine.
+                    if (r !== pr) { pr = r; q = r + a0 * (255 - r) / 255; or = q | 0; q -= or; if (q > 0.5 || (q === 0.5 && (or & 1))) or++; }
+                    if (g !== pg) { pg = g; q = g + a1 * (255 - g) / 255; og = q | 0; q -= og; if (q > 0.5 || (q === 0.5 && (og & 1))) og++; }
+                    if (b !== pb) { pb = b; q = b + a2 * (255 - b) / 255; ob = q | 0; q -= ob; if (q > 0.5 || (q === 0.5 && (ob & 1))) ob++; }
+                    u[p] = (v & 0xff000000) | (ob << 16) | (og << 8) | or;
+                }
             }
+            if (x < lx0) lx0 = x;
+            lx1 = xEnd;
         }
+        if (lx1 > 0) markDirty(lx0, y, lx1, yEnd);
     }
     // Embers.
     var hotness = Math.min(1, heat * 3);
+    var ex0 = W, ey0 = H, ex1 = -1, ey1 = -1;
     for (i = 0; i < s.embers.length; i++) {
         var e = s.embers[i];
         var glow = (0.4 + 0.6 * Math.max(0, Math.sin(t * 1.4 + e.p))) * hotness;
         var col = glow > 0.6 ? C.e0 : glow > 0.3 ? C.e1 : C.e2;
-        fillRect(fb, Math.floor(e.x), Math.floor(e.y), e.s, e.s, col, Math.min(1, 0.3 + glow));
+        var fx = Math.floor(e.x), fy = Math.floor(e.y);
+        fillRect(fb, fx, fy, e.s, e.s, col, Math.min(1, 0.3 + glow));
+        if (fx < ex0) ex0 = fx; if (fx + e.s > ex1) ex1 = fx + e.s;
+        if (fy < ey0) ey0 = fy; if (fy + e.s > ey1) ey1 = fy + e.s;
     }
-    markDirty(BASE_X - 73, BASE_Y - 22, BASE_X + 76, BASE_Y + 35);
+    if (ex1 > 0) markDirty(ex0, ey0, ex1, ey1);
     if (flameH < 3) return;
     drawFlame(fb, t, flameH, flameW);
     if (s.drag) {
@@ -464,26 +504,45 @@ function drawFire(fb, s, t) {
 //   column or row instead of four times per cell. Values are bit-identical.
 // - Cells that cannot pass the edge test are skipped before evaluating noise:
 //   n < 1, so edge < taper - |nx| + 0.425.
+// Flame colours hot to cool, as [r, g, b] and as opaque little-endian RGBA
+// words for a Uint32Array view of the frame.
+var FLAME_RGB = [C.f0, C.f1, C.f2, C.f3, C.f4, C.f5];
+var FLAME_U32 = FLAME_RGB.map(function (c) { return (0xff000000 | (c[2] << 16) | (c[1] << 8) | c[0]) >>> 0; });
+
+function hashRow(row, min, n, iy) {
+    for (var j = 0; j < n; j++) row[j] = hash(min + j, iy);
+    return row;
+}
+
+// Scratch reused every frame (no garbage at 20 fps). Plain arrays on
+// purpose: in QV4 an index read back out of a Float64Array is a double, and
+// indexing with doubles fell off the fast path (1.4 s a frame).
+var _ix1 = [], _fx1 = [], _ix2 = [], _fx2 = [];
+var _h1 = [[], []], _h2 = [[], []];
+
 function drawFlame(fb, t, flameH, flameW) {
     var x, y, k;
     var yStart = Math.floor(BASE_Y - flameH);
     var xStart = Math.floor(BASE_X - flameW - 11), xEnd = BASE_X + flameW + 11;
     var cols = Math.floor(xEnd) - xStart + 1;
     var t03 = t * 0.3, t33 = t * 3.3, t05 = t * 0.5, t58 = t * 5.8, t31 = t * 3.1, t2 = t * 2;
-    var ix1 = [], fx1 = [], ix2 = [], fx2 = [];
+    var ix1 = _ix1, fx1 = _fx1, ix2 = _ix2, fx2 = _fx2;
     var min1 = 1e9, max1 = -1e9, min2 = 1e9, max2 = -1e9;
     for (k = 0; k < cols; k++) {
         x = xStart + k;
         var X1 = x * 0.19 + t03, X2 = x * 0.43 - t05;
         var i1 = Math.floor(X1), i2 = Math.floor(X2), f1 = X1 - i1, f2 = X2 - i2;
-        ix1.push(i1); fx1.push(f1 * f1 * (3 - 2 * f1));
-        ix2.push(i2); fx2.push(f2 * f2 * (3 - 2 * f2));
+        ix1[k] = i1; fx1[k] = f1 * f1 * (3 - 2 * f1);
+        ix2[k] = i2; fx2[k] = f2 * f2 * (3 - 2 * f2);
         if (i1 < min1) min1 = i1; if (i1 > max1) max1 = i1;
         if (i2 < min2) min2 = i2; if (i2 > max2) max2 = i2;
     }
     var n1 = max1 - min1 + 2, n2 = max2 - min2 + 2;
-    var hA1 = new Array(n1), hB1 = new Array(n1), hA2 = new Array(n2), hB2 = new Array(n2);
+    // hash() rows along each lattice row. Neighbouring flame rows mostly
+    // share a lattice row (or the next one), so rows are computed once.
+    var hA1 = _h1[0], hB1 = _h1[1], hA2 = _h2[0], hB2 = _h2[1], row1 = NaN, row2 = NaN, swap;
     var top = H, bottom = -1, left = W, right = -1;
+    var u = view32(fb), F = FLAME_U32, FC = FLAME_RGB;
     for (y = yStart; y < BASE_Y + 1; y++) {
         var v = (BASE_Y - y) / flameH;
         if (v > 1 || y < 0 || y >= H) continue;
@@ -493,15 +552,30 @@ function drawFlame(fb, t, flameH, flameW) {
         var iy1 = Math.floor(Y1), iy2 = Math.floor(Y2), g1 = Y1 - iy1, g2 = Y2 - iy2;
         var fy1 = g1 * g1 * (3 - 2 * g1), fy2 = g2 * g2 * (3 - 2 * g2);
         var rowReady = false;
-        var shade = (1 - v) * 0.28, rowBase = y * W;
-        for (k = 0; k < cols; k++) {
+        var shade = (1 - v) * 0.28, rowBase = y * W, rowLeft = -1, rowRight = -1;
+        // Only columns with |nx| < taper + 0.405 can pass the first test
+        // below; one cell of slack each side, and the test still decides.
+        var reachPx = (taper + 0.405) * flameW, centre = BASE_X + sway;
+        var kFrom = Math.max(0, Math.max(0, Math.floor(centre - reachPx) - 1) - xStart);
+        var kTo = Math.min(cols, Math.min(W, Math.ceil(centre + reachPx) + 2) - xStart);
+        for (k = kFrom; k < kTo; k++) {
             x = xStart + k;
             var nx = (x - BASE_X - sway) / flameW;
-            var reach = taper - Math.abs(nx);
+            var reach = taper - (nx < 0 ? -nx : nx);
             if (reach + 0.43 <= 0.025) continue;
             if (!rowReady) {
-                for (var j = 0; j < n1; j++) { hA1[j] = hash(min1 + j, iy1); hB1[j] = hash(min1 + j, iy1 + 1); }
-                for (j = 0; j < n2; j++) { hA2[j] = hash(min2 + j, iy2); hB2[j] = hash(min2 + j, iy2 + 1); }
+                if (iy1 !== row1) {
+                    if (iy1 === row1 + 1) { swap = hA1; hA1 = hB1; hB1 = swap; }
+                    else hashRow(hA1, min1, n1, iy1);
+                    hashRow(hB1, min1, n1, iy1 + 1);
+                    row1 = iy1;
+                }
+                if (iy2 !== row2) {
+                    if (iy2 === row2 + 1) { swap = hA2; hA2 = hB2; hB2 = swap; }
+                    else hashRow(hA2, min2, n2, iy2);
+                    hashRow(hB2, min2, n2, iy2 + 1);
+                    row2 = iy2;
+                }
                 rowReady = true;
             }
             var o1 = ix1[k] - min1, o2 = ix2[k] - min2, fa = fx1[k], fb2 = fx2[k];
@@ -512,40 +586,65 @@ function drawFlame(fb, t, flameH, flameW) {
             var n = na * 0.65 + nb * 0.35;
             var edge = reach + (n - 0.5) * 0.85;
             if (edge <= 0.025) continue;
-            if (x < 0 || x >= W) continue;
             var core = edge * 0.85 + shade;
-            var fc = core > 0.98 ? C.f0 : core > 0.78 ? C.f1 : core > 0.53 ? C.f2 : core > 0.31 ? C.f3 : core > 0.14 ? C.f4 : C.f5;
-            var i = (rowBase + x) * 4;
+            var ci = core > 0.98 ? 0 : core > 0.78 ? 1 : core > 0.53 ? 2 : core > 0.31 ? 3 : core > 0.14 ? 4 : 5;
             if (edge < 0.09) {
+                var i = (rowBase + x) * 4, fc = FC[ci];
                 fb[i] = fc[0] * 0.75 + fb[i] * 0.25;
                 fb[i + 1] = fc[1] * 0.75 + fb[i + 1] * 0.25;
                 fb[i + 2] = fc[2] * 0.75 + fb[i + 2] * 0.25;
             } else {
-                fb[i] = fc[0]; fb[i + 1] = fc[1]; fb[i + 2] = fc[2];
+                u[rowBase + x] = F[ci];
             }
+            if (rowLeft < 0) rowLeft = x;
+            rowRight = x;
+        }
+        if (rowLeft >= 0) {
             if (y < top) top = y; if (y > bottom) bottom = y;
-            if (x < left) left = x; if (x > right) right = x;
+            if (rowLeft < left) left = rowLeft; if (rowRight > right) right = rowRight;
         }
     }
     if (bottom >= 0) markDirty(left, top, right + 1, bottom + 1);
 }
 
-// native: which 24 x 24 tiles this frame drew into over the background, so
-// the canvas copies only those (plus last frame's, to restore them).
-var TILE = 24, TILE_COLS = W / TILE, TILE_ROWS = H / TILE;
-var _tiles = new Uint8Array(TILE_COLS * TILE_ROWS);
+// native: the rectangles this frame drew into over the background, so the
+// canvas copies only those (and last frame's, to restore the art under
+// them). A list is { n, r: Int16Array of x0, y0, x1, y1 }, clipped to the
+// frame, half-open. Past RECT_MAX the last rectangle grows to cover the rest.
+var RECT_MAX = 512;
+function createRects() { return { n: 0, r: new Int16Array(RECT_MAX * 4) }; }
+var _rects = null;
+// A Uint32Array over the frame's bytes (RGBA, little-endian), for whole-pixel
+// writes.
+var _u32 = null, _u32of = null;
+function view32(fb) {
+    if (_u32of !== fb) { _u32 = new Uint32Array(fb.buffer, fb.byteOffset, fb.length >> 2); _u32of = fb; }
+    return _u32;
+}
 function markDirty(x0, y0, x1, y1) {
-    var tx0 = Math.max(0, Math.floor(x0 / TILE)), ty0 = Math.max(0, Math.floor(y0 / TILE));
-    var tx1 = Math.min(TILE_COLS - 1, Math.floor((Math.ceil(x1) - 1) / TILE)), ty1 = Math.min(TILE_ROWS - 1, Math.floor((Math.ceil(y1) - 1) / TILE));
-    for (var ty = ty0; ty <= ty1; ty++) for (var tx = tx0; tx <= tx1; tx++) _tiles[ty * TILE_COLS + tx] = 1;
+    var list = _rects;
+    if (!list) return;
+    x0 = Math.max(0, Math.floor(x0)); y0 = Math.max(0, Math.floor(y0));
+    x1 = Math.min(W, Math.ceil(x1)); y1 = Math.min(H, Math.ceil(y1));
+    if (!(x1 > x0 && y1 > y0)) return;
+    var r = list.r, k;
+    if (list.n >= RECT_MAX) {
+        k = (RECT_MAX - 1) * 4;
+        if (x0 < r[k]) r[k] = x0; if (y0 < r[k + 1]) r[k + 1] = y0;
+        if (x1 > r[k + 2]) r[k + 2] = x1; if (y1 > r[k + 3]) r[k + 3] = y1;
+        return;
+    }
+    k = list.n++ * 4;
+    r[k] = x0; r[k + 1] = y0; r[k + 2] = x1; r[k + 3] = y1;
 }
 
 // The reference draw(), into fb. bg is a prepared 360 x 240 RGBA buffer or
-// null for the reference's fallback fill. Returns a new Uint8Array of tile
-// flags (TILE_COLS x TILE_ROWS, row-major): 1 where this frame drew.
-function render(fb, s, bg) {
+// null for the reference's fallback fill. If `rects` (from createRects) is
+// given it receives the rectangles drawn over the background.
+function render(fb, s, bg, rects) {
     var i, p;
-    _tiles = new Uint8Array(TILE_COLS * TILE_ROWS);
+    _rects = rects || null;
+    if (rects) rects.n = 0;
     if (bg) fb.set(bg);
     else fillRect(fb, 0, 0, W, H, C.empty, 1);
     var t = s.elapsed;
@@ -579,7 +678,8 @@ function render(fb, s, bg) {
         drawLog(fb, s.drag.x, s.drag.y, -0.22);
         markDirty(Math.round(s.drag.x) - 23, Math.round(s.drag.y) - 23, Math.round(s.drag.x) + 24, Math.round(s.drag.y) + 24);
     }
-    return _tiles;
+    _rects = null;
+    return rects;
 }
 
 // ---------------------------------------------------------------- bar icon
@@ -631,8 +731,9 @@ if (typeof module !== "undefined" && module.exports) {
         pointerDown: pointerDown, pointerMove: pointerMove, pointerUp: pointerUp, pointerCancel: pointerCancel, cursorFor: cursorFor,
         update: update, advanceAnalytic: advanceAnalytic, tick: tick, status: status, statusIndex: statusIndex,
         serialize: serialize, restore: restore,
-        createFrame: createFrame, prepareBackground: prepareBackground, render: render, drawLog: drawLog,
-        TILE: TILE, TILE_COLS: TILE_COLS, TILE_ROWS: TILE_ROWS,
+        roundByte: roundByte, createFrame: createFrame, prepareBackground: prepareBackground, render: render, drawLog: drawLog,
+        cachedBackground: cachedBackground, cacheBackground: cacheBackground,
+        createRects: createRects, RECT_MAX: RECT_MAX,
         iconCells: iconCells, ICON_SIZE: ICON_SIZE, ICON_COLORS: ICON_COLORS
     };
 }

@@ -53,6 +53,21 @@ test("renderer output is unchanged, frame for frame", () => {
   assert.equal(d, DIGEST);
 });
 
+test("roundByte rounds exactly like a Uint8ClampedArray store", () => {
+  const u8 = new Uint8ClampedArray(1);
+  const f64 = new Float64Array(1), bits = new BigInt64Array(f64.buffer);
+  const near = (x, steps) => { f64[0] = x; bits[0] += BigInt(steps); return f64[0]; };
+  const values = [0, 255];
+  for (let k = 0; k < 255; k++) for (const x of [k + 0.5, k + 0.25, k + 0.75]) for (let d = -3; d <= 3; d++) values.push(near(x, d));
+  let seed = 7;
+  for (let i = 0; i < 200000; i++) { seed = (seed * 1664525 + 1013904223) >>> 0; values.push(seed / 4294967296 * 255); }
+  for (const x of values) {
+    if (x < 0 || x > 255) continue;
+    u8[0] = x;
+    if (Fire.roundByte(x) !== u8[0]) assert.fail(`roundByte(${x}) = ${Fire.roundByte(x)}, store gives ${u8[0]}`);
+  }
+});
+
 test("dirty rectangles cover every pixel that differs from the art", { skip: typeof Fire.createRects !== "function" && "no rects" }, () => {
   const rects = Fire.createRects();
   let checked = 0, maxRects = 0, area = 0;
