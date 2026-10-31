@@ -1,0 +1,85 @@
+
+  (()=>{
+    const root=document.getElementById('omafire-live'), q=s=>root.querySelector(s), canvas=q('#of-scene'), ctx=canvas.getContext('2d',{alpha:false});
+    const bg=new Image(); bg.src='DATA_URL';
+    const W=360,H=240,baseX=181,baseY=187;
+    let fuel=.68,heat=.68,boost=0,elapsed=0,previous=0,lastDraw=0,frame=0,drag=null,flight=null,sparks=[],smoke=[],toastUntil=0,fast=false,fastTime=0,sound=false,audio=null,master=null,noiseGain=null,crackleGain=null,crackleNode=null,lastState='';
+    const reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let seed=5919; const rand=()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296;};
+    const stars=Array.from({length:16},()=>({x:50+rand()*260,y:5+rand()*45,p:rand()*9}));
+    const embers=Array.from({length:75},()=>({x:baseX+(rand()-.5)*52,y:baseY-2+rand()*7,p:rand()*7,s:rand()>0.8?2:1}));
+    function hash(x,y){let n=Math.sin(x*127.1+y*311.7)*43758.5453;return n-Math.floor(n);}
+    function noise(x,y){let ix=Math.floor(x),iy=Math.floor(y),fx=x-ix,fy=y-iy;fx=fx*fx*(3-2*fx);fy=fy*fy*(3-2*fy);const a=hash(ix,iy),b=hash(ix+1,iy),c=hash(ix,iy+1),d=hash(ix+1,iy+1);return a+(b-a)*fx+(c-a)*fy+(a-b-c+d)*fx*fy;}
+    function toast(t){q('#of-message').textContent=t;toastUntil=elapsed+2.2;q('#of-message').classList.add('of-visible');}
+    function burst(n,power=1){for(let i=0;i<n;i++)sparks.push({x:baseX+(rand()-.5)*35,y:baseY-5-rand()*9,vx:(rand()-.5)*21*power,vy:-(17+rand()*41)*power,life:1+rand()*2,age:0,s:rand()>.8?2:1});}
+    function addLog(){fuel=Math.min(1,fuel+.25);boost=Math.max(boost,.35);flight={age:0,fromX:36,fromY:177};burst(24);toast(fuel>.95?'A good, roaring fire.':'Fresh wood. Give it a moment.');}
+    function stoke(){if(fuel<.015){toast('Add a log to get it going.');return;}boost=1.1;heat=Math.min(1,heat+.15);burst(48,1.5);toast('The coals come alive.');}
+    q('#of-add').addEventListener('click',addLog); q('#of-stoke').addEventListener('click',stoke);
+    q('#of-toggle').addEventListener('click',()=>{const open=q('#of-toggle').getAttribute('aria-expanded')==='true';q('#of-toggle').setAttribute('aria-expanded',String(!open));q('#of-window').classList.toggle('of-hide',open);if(open&&master)master.gain.setTargetAtTime(0,audio.currentTime,.1);else if(master&&sound)master.gain.setTargetAtTime(.22,audio.currentTime,.1);});
+    q('#of-cycle').addEventListener('click',()=>{fast=!fast;fastTime=0;if(fast){fuel=.85;boost=.2;toast('A few minutes, in 35 seconds.');}q('#of-cycle').setAttribute('aria-pressed',String(fast));q('#of-cycle').textContent=fast?'Back to real time':'Watch a burn cycle';q('#of-speed').textContent=fast?'Accelerated preview':'Real-time tending';});
+    async function toggleSound(){
+      sound=!sound;
+      try {
+        if(!audio){const AC=window.AudioContext||window.webkitAudioContext;if(!AC)throw Error('Audio unavailable');audio=new AC();master=audio.createGain();master.gain.value=0;master.connect(audio.destination);
+          const b=audio.createBuffer(1,audio.sampleRate*3,audio.sampleRate),v=b.getChannelData(0);let brown=0;for(let i=0;i<v.length;i++){brown=(brown+(Math.random()*2-1)*.035)/1.02;v[i]=brown*4;}
+          const source=audio.createBufferSource();source.buffer=b;source.loop=true;const filter=audio.createBiquadFilter();filter.type='lowpass';filter.frequency.value=950;noiseGain=audio.createGain();noiseGain.gain.value=.35;source.connect(filter).connect(noiseGain).connect(master);source.start();
+          const cb=audio.createBuffer(1,audio.sampleRate*3,audio.sampleRate),cd=cb.getChannelData(0);for(let i=0;i<cd.length;i++){if(Math.random()<.00015){let duration=Math.floor(90+Math.random()*700);for(let k=0;k<duration&&i+k<cd.length;k++)cd[i+k]+=(Math.random()*2-1)*Math.pow(1-k/duration,5)*.65;}}
+          crackleNode=audio.createBufferSource();crackleNode.buffer=cb;crackleNode.loop=true;crackleGain=audio.createGain();crackleGain.gain.value=.5;crackleNode.connect(crackleGain).connect(master);crackleNode.start();}
+        if(audio.state==='suspended')await audio.resume();master.gain.setTargetAtTime(sound?.22:0,audio.currentTime,.3);
+        q('#of-sound').textContent=sound?'Sound on':'Sound off';q('#of-sound').setAttribute('aria-pressed',String(sound));
+      }catch(e){sound=false;toast('Sound unavailable in this preview.');}
+    }
+    q('#of-sound').addEventListener('click',toggleSound);
+    function coords(e){const b=canvas.getBoundingClientRect();return{x:(e.clientX-b.left)*W/b.width,y:(e.clientY-b.top)*H/b.height};}
+    canvas.addEventListener('pointerdown',e=>{const p=coords(e);if(p.x<88&&p.y>142){drag={x:p.x,y:p.y};canvas.setPointerCapture(e.pointerId);canvas.style.cursor='grabbing';}else if(Math.hypot(p.x-baseX,p.y-(baseY-6))<59){burst(32,1.2);boost=Math.max(boost,.22);toast('A little shower of sparks.');}});
+    canvas.addEventListener('pointermove',e=>{const p=coords(e);if(drag){drag.x=p.x;drag.y=p.y;}else canvas.style.cursor=p.x<88&&p.y>142?'grab':'default';});
+    canvas.addEventListener('pointerup',e=>{if(!drag)return;const p=coords(e);if(Math.hypot(p.x-baseX,p.y-(baseY-6))<65){fuel=Math.min(1,fuel+.25);boost=.45;burst(40);toast('That’ll keep it going.');flight={age:.48,fromX:p.x,fromY:p.y};}drag=null;canvas.style.cursor='default';});
+    canvas.addEventListener('pointercancel',()=>{drag=null;canvas.style.cursor='default';});
+    function drawLog(x,y,angle=0){ctx.save();ctx.translate(Math.round(x),Math.round(y));ctx.rotate(angle);ctx.fillStyle='#211a13';ctx.fillRect(-19,-5,36,11);ctx.fillStyle='#74472b';ctx.fillRect(-19,-5,34,3);ctx.fillStyle='#a46e3b';ctx.fillRect(-18,-5,33,1);ctx.fillStyle='#3e2c21';ctx.fillRect(-17,0,30,2);ctx.fillStyle='#503323';ctx.fillRect(-15,4,28,2);ctx.fillStyle='#bc8a52';ctx.fillRect(14,-4,6,9);ctx.fillStyle='#5e3c27';ctx.fillRect(16,-2,2,5);ctx.restore();}
+    function drawFire(t){
+      const alive=Math.min(1,heat*1.6),flameH=(24+heat*46+boost*20)*alive,flameW=(17+heat*12+boost*5)*alive;
+      const flick=.86+Math.sin(t*9)*.07+Math.sin(t*16.2)*.04;
+      ctx.save();ctx.globalCompositeOperation='screen';
+      for(let y=baseY-22;y<baseY+34;y+=3)for(let x=baseX-73;x<baseX+74;x+=3){const d=((x-baseX)/76)**2+((y-baseY-1)/30)**2;const a=Math.max(0,1-d)**2*.19*flick*alive; if(a>.004){ctx.fillStyle='rgba(255,118,24,'+a+')';ctx.fillRect(x,y,3,3);}}
+      ctx.restore();
+      for(const e of embers){const glow=(.4+.6*Math.max(0,Math.sin(t*1.4+e.p)))*Math.min(1,heat*3);ctx.fillStyle=glow>.6?'#ffc05b':glow>.3?'#db6328':'#733021';ctx.globalAlpha=Math.min(1,.3+glow);ctx.fillRect(Math.floor(e.x),Math.floor(e.y),e.s,e.s);}ctx.globalAlpha=1;
+      if(flameH<3)return;
+      for(let y=Math.floor(baseY-flameH);y<baseY+1;y++){const v=(baseY-y)/flameH;for(let x=Math.floor(baseX-flameW-11);x<=baseX+flameW+11;x++){
+        const sway=Math.sin(v*7-t*3.1)*v*7+Math.sin(v*12+t*2)*v*3;
+        const nx=(x-baseX-sway)/flameW;
+        const n=noise(x*.19+t*.3,y*.12+t*3.3)*.65+noise(x*.43-t*.5,y*.31+t*5.8)*.35;
+        const edge=Math.pow(Math.max(0,1-v),.8)-Math.abs(nx)+(n-.5)*.85;
+        if(edge<=.025||v>1)continue;
+        const core=edge*.85+(1-v)*.28;
+        ctx.fillStyle=core>.98?'#fff0a7':core>.78?'#ffd36e':core>.53?'#ffae3c':core>.31?'#f37828':core>.14?'#d5471d':'#91341f';
+        if(edge<.09)ctx.globalAlpha=.75;ctx.fillRect(x,y,1,1);ctx.globalAlpha=1;
+      }}
+      if(drag){ctx.save();ctx.strokeStyle='#e6b568';ctx.setLineDash([3,3]);ctx.globalAlpha=.75;ctx.strokeRect(baseX-39,baseY-38,78,54);ctx.restore();}
+    }
+    function update(dt){elapsed+=dt;boost=Math.max(0,boost-dt*.45);fuel=Math.max(0,fuel-dt*(fast?.025:.00125));heat+=(Math.max(0,fuel-.015)-heat)*Math.min(1,dt*.75);
+      if(fast){fastTime+=dt;if(fastTime>39){fast=false;q('#of-cycle').setAttribute('aria-pressed','false');q('#of-cycle').textContent='Watch a burn cycle';q('#of-speed').textContent='Real-time tending';toast('A few coals. Add wood to revive it.');}}
+      if(heat>.03&&rand()<dt*14*heat)burst(1);
+      if(heat>.03&&rand()<dt*4)smoke.push({x:baseX+(rand()-.5)*14,y:baseY-18,age:0,life:4+rand()*2,p:rand()*5});
+      sparks=sparks.filter(p=>{p.age+=dt;p.x+=p.vx*dt+Math.sin(p.age*4)*dt*5;p.y+=p.vy*dt;p.vy+=dt*3;return p.age<p.life;});
+      smoke=smoke.filter(p=>{p.age+=dt;p.y-=dt*14;p.x+=Math.sin(p.age*2+p.p)*dt*7;return p.age<p.life;});
+      if(flight){flight.age+=dt;if(flight.age>.7)flight=null;}
+      const state=boost>.5?'● Stoking the fire':heat>.78?'● Roaring warmly':heat>.3?'● Burning steadily':heat>.08?'● Settling into coals':fuel>.01?'● Glowing embers':'○ Resting';
+      if(state!==lastState){q('#of-state').textContent=state;lastState=state;}
+      if(elapsed>toastUntil)q('#of-message').classList.remove('of-visible');
+      if(audio&&sound&&noiseGain){noiseGain.gain.setTargetAtTime(.1+heat*.55,audio.currentTime,.3);crackleGain.gain.setTargetAtTime(.1+heat*.65,audio.currentTime,.2);}
+    }
+    function draw(){ctx.imageSmoothingEnabled=false;if(bg.complete&&bg.naturalWidth)ctx.drawImage(bg,0,0,W,H);else {ctx.fillStyle='#0b1522';ctx.fillRect(0,0,W,H);}
+      for(const s of stars){ctx.globalAlpha=.25+.4*Math.sin(elapsed*.7+s.p)**2;ctx.fillStyle='#a6c3de';ctx.fillRect(Math.floor(s.x),Math.floor(s.y),1,1);}ctx.globalAlpha=1;
+      for(const p of smoke){ctx.globalAlpha=.04*Math.sin(Math.PI*p.age/p.life);ctx.fillStyle='#b6aeb3';const r=2+p.age*1.3;ctx.fillRect(Math.floor(p.x),Math.floor(p.y),Math.round(r),Math.round(r*1.8));}ctx.globalAlpha=1;
+      drawFire(elapsed);
+      for(const p of sparks){ctx.globalAlpha=Math.max(0,1-p.age/p.life);ctx.fillStyle=p.age<.5?'#ffe39a':'#d67c32';ctx.fillRect(Math.round(p.x),Math.round(p.y),p.s,p.s);}ctx.globalAlpha=1;
+      if(flight){const p=Math.min(1,flight.age/.7),e=1-(1-p)**2;drawLog(flight.fromX+(baseX-flight.fromX)*e,flight.fromY+(baseY-flight.fromY)*e-Math.sin(p*Math.PI)*45,p*.4);}
+      if(drag)drawLog(drag.x,drag.y,-.22);
+    }
+    function loop(now){if(!root.isConnected)return;const dt=previous?Math.min(.08,(now-previous)/1000):.016;previous=now;
+      if(!document.hidden){update(dt);if(now-lastDraw>(reduced?180:50)){draw();lastDraw=now;frame++;}}
+      requestAnimationFrame(loop);
+    }
+    bg.onload=draw;requestAnimationFrame(loop);
+  })();
+  
