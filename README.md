@@ -1,23 +1,87 @@
 # OmaFire
 
-A tiny campfire for the Omarchy bar. Click the flame to open it, add wood, stoke it, and let it burn down while you work. It goes from flames to coals to rest on its own. No timers, no scores, no reminders.
+A tiny campfire for your Omarchy bar.
 
-<!-- TODO(Wes): replace with a real screenshot from the VM -->
-![OmaFire popup](preview.png)
+Click the flame in the bar and a little campsite opens up. Throw a log on, stoke it, poke the coals, then go back to work and let it burn down on its own. It doesn't track anything, doesn't nag you, and won't tell you how productive you were.
 
-## Install
+![OmaFire open from the Omarchy bar](docs/screenshots/hero.png)
 
 ```bash
 omarchy plugin add https://github.com/wesleygrimes/omafire --enable
 ```
 
-Plugins added without `--enable` land disabled so you can read the code first. Enable it later with:
+That's the whole install. The fire is in the right side of your bar.
+
+![Adding a log and stoking the fire](docs/screenshots/add-log-stoke.gif)
+
+## What you can do with it
+
+- **Add a log.** Click **+ Add log**, or drag one from the woodpile at the lower left and drop it on the fire. One log is about three more minutes of fire.
+- **Stoke it.** **Stoke** makes it flare up for a bit. It doesn't add wood, so stoking an empty fire pit just gets you a polite note.
+- **Poke the coals.** Click the coals for a shower of sparks. Very satisfying, no practical value.
+- **Listen to it.** **Sound on** plays a quiet crackle. It starts off every time and stops when the popup closes, because nobody wants a surprise fire noise in a meeting.
+- **Leave it alone.** A full load burns for about 13 minutes, down to glowing embers, then coals, then rest. It keeps burning while the popup is closed, and after a restart or a suspend it picks up where it would have been.
+
+The bar icon is a little pixel fire that follows along, so you can tell at a glance whether it needs a log. Hover it for the status.
+
+| Bar | Popup |
+| --- | --- |
+| ![The OmaFire icon in the bar, zoomed](docs/screenshots/bar.png) | ![The OmaFire popup at 2x](docs/screenshots/popup.png) |
+
+### Keys
+
+While the popup is open: `A` adds a log, `S` stokes, `M` toggles sound, `Tab` moves between the buttons, `Esc` closes it.
+
+### Keybind and scripts
+
+OmaFire answers on the shell IPC target `wesleygrimes.omafire`:
 
 ```bash
-omarchy plugin enable wesleygrimes.omafire
+omarchy-shell wesleygrimes.omafire toggle
+omarchy-shell wesleygrimes.omafire addLog
+omarchy-shell wesleygrimes.omafire status
 ```
 
+The functions are `toggle`, `open`, `close`, `addLog`, `stoke`, `poke`, `sound`, and `status` (prints JSON with fuel, heat, boost, status, open, and sound).
+
+To open it from the keyboard, add a binding to `~/.config/hypr/bindings.lua`:
+
+```lua
+o.bind("SUPER + ALT + O", "OmaFire", "omarchy-shell wesleygrimes.omafire toggle")
+```
+
+`SUPER + ALT + O` is free on a stock Omarchy 4 install. Check `omarchy-menu-keybindings --print` if you've moved things around.
+
+## Requirements
+
+- Omarchy 4 with the Quickshell bar. Tested on Omarchy 4.0.0, Quickshell 0.3.2, Qt 6.12, Hyprland 0.57.
+- `qt6-imageformats` to load the WebP artwork.
+- `qt6-multimedia` for the crackle. It's optional. Without it everything else works and the Sound button says sound isn't available.
+
+Install either with `sudo pacman -S qt6-imageformats qt6-multimedia` if they're missing.
+
+No network access, no web view, no background service. It's plain QML and JavaScript running inside the shell you already have.
+
+## Remove it
+
+Turn it off and keep it installed:
+
+```bash
+omarchy plugin disable wesleygrimes.omafire
+```
+
+Remove it completely:
+
+```bash
+omarchy plugin remove wesleygrimes.omafire --yes
+rm -rf ~/.local/state/omafire
+```
+
+The second line deletes the saved fire (fuel and heat). OmaFire doesn't write anywhere else.
+
 ### Manual install
+
+If you'd rather not use `omarchy plugin add`:
 
 ```bash
 git clone https://github.com/wesleygrimes/omafire ~/.config/omarchy/plugins/wesleygrimes.omafire
@@ -25,54 +89,17 @@ omarchy-shell shell rescanPlugins
 omarchy plugin enable wesleygrimes.omafire
 ```
 
-### Disable or remove
-
-```bash
-omarchy plugin disable wesleygrimes.omafire
-omarchy plugin remove wesleygrimes.omafire
-```
-
-## Use it
-
-- Click the little flame in the bar to open or close the popup.
-- **+ Add log** or drag a log from the woodpile at the lower left onto the fire.
-- **Stoke** makes it flare up for a bit. It doesn't add wood.
-- Click the coals for a shower of sparks.
-- **Sound off/on** plays a quiet crackle. It starts off and stops when the popup closes.
-
-Keys while the popup is open: `A` adds a log, `S` stokes, `M` toggles sound, `Esc` closes, `Tab` moves between the buttons.
-
-A full load of wood burns for about 13 minutes. One log adds about 3 minutes. The fire keeps burning while the popup is closed, and picks up where it should after a restart or suspend.
-
-### Keybinds and scripts
-
-OmaFire answers on the IPC target `wesleygrimes.omafire`:
-
-```bash
-omarchy-shell wesleygrimes.omafire toggle
-```
-
-Functions: `toggle`, `open`, `close`, `addLog`, `stoke`, `poke`, `sound`, and `status` (prints JSON with fuel, heat, boost, status, open, sound).
-
-For example, a Hyprland bind in `~/.config/hypr/bindings.conf`:
-
-```
-bind = SUPER CTRL, F, exec, omarchy-shell wesleygrimes.omafire toggle
-```
-
-## Requirements
-
-- Omarchy 4.0 (the Quickshell bar). Tested against Quickshell 0.3.2 and Qt 6.12.
-- `qt6-imageformats` for the WebP background.
-- `qt6-multimedia` for sound. Without it everything else still works and the Sound button says it's unavailable.
+Remove a manual install with `omarchy plugin disable wesleygrimes.omafire`, then delete that folder.
 
 ## How it works
 
-The popup is plain QML. The fire is a port of the original browser prototype's drawing code: the same noise, palette, sparks, smoke, light, and timing, drawn into a 360 x 240 pixel buffer and scaled up without smoothing so it stays crisp on HiDPI screens. It only draws while the popup is open.
+The fire started life as a small browser prototype. OmaFire is a straight port of its drawing code into QML: the same noise, palette, sparks, smoke, light, and timing, drawn into a 360 by 240 pixel buffer and scaled up without smoothing so it stays crisp on HiDPI screens. The tests check that the port produces the same pixels as the original, frame for frame.
 
-Fuel and heat are saved to `~/.local/state/omafire/state.json` (or `$XDG_STATE_HOME/omafire/state.json`). Sound isn't saved and always starts off.
+It only draws while the popup is open, and then only the parts of the picture that changed. With the popup closed the cost is the bar icon, which is about 1% of one core on my VM. With it open it's roughly a fifth of one core, which is about what a small animated campfire should cost you.
 
-More detail is in [docs/NOTES.md](docs/NOTES.md).
+State lives in `~/.local/state/omafire/state.json` (or under `$XDG_STATE_HOME`). Sound is never saved.
+
+More detail, including the numbers, is in [docs/NOTES.md](docs/NOTES.md).
 
 ## Development
 
@@ -80,13 +107,13 @@ More detail is in [docs/NOTES.md](docs/NOTES.md).
 mise run test
 ```
 
-Runs everything: simulation tests, a pixel comparison against the original prototype (in node and in headless Chromium), offscreen QML tests at 1x and 2x, a Quickshell integration run, and `omarchy plugin validate`. Images land in `tests/out/`.
+That runs the simulation tests, a pixel comparison against the original prototype (in Node and in headless Chromium), offscreen QML tests at 1x and 2x, a Quickshell integration run, and `omarchy plugin validate`. Images land in `tests/out/`.
 
 `mise run sound` rebuilds `assets/crackle.wav` from `scripts/gen-crackle.py`.
 
 ## Credits
 
-The campsite artwork (`assets/campsite-approved.webp`) was generated for this project and is used unchanged. The crackle loop is generated by `scripts/gen-crackle.py`.
+The campsite artwork in `assets/campsite-approved.webp` was made for this project and ships unchanged. The crackle is generated by `scripts/gen-crackle.py`.
 
 ## License
 
