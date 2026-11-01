@@ -64,6 +64,8 @@ Item {
             compare(popup.addButton.height, 36);
             compare(popup.addButton.width, popup.soundButton.width, "equal buttons");
             compare(popup.soundButton.x - popup.stokeButton.x - popup.stokeButton.width, 8, "8 px gap");
+            compare(popup.resizeGrip.width, 22, "the corner grip is there");
+            compare(popup.resizeGrip.y + popup.resizeGrip.height, popup.height, "grip sits on the bottom");
             compare(fire.statusText, "● Burning steadily");
             compare(popup.soundButton.text, "Sound off");
         }
@@ -184,6 +186,18 @@ Item {
             verify(fire.heat > 0.08, "wood rekindles it");
             settleFrame();
             grab(popup, "popup-rekindle-" + Screen.devicePixelRatio + "x.png");
+        }
+
+        function test_8_resized_panel() {
+            popup.panelWidth = 520;
+            compare(popup.width, 520, "width follows panelWidth");
+            compare(popup.scene.width, 518);
+            compare(popup.scene.height, 345, "scene stays 3:2");
+            compare(popup.height, 467);
+            compare(popup.resizeGrip.y + popup.resizeGrip.height, popup.height);
+            popup.panelWidth = 390;
+            compare(popup.width, 390, "back to the reference size");
+            compare(popup.height, 381);
         }
     }
 }

@@ -11,6 +11,7 @@ ui/FireSession.qml       singleton: one fire for all monitors, state file, IPC
 ui/qmldir                singleton FireSession, OmaFireBar
 ui/fire/                 plain QtQuick, no qs.* imports (renders standalone)
   fire.js                simulation + software renderer (.pragma library, node-loadable)
+  panel.js               popup width, 3:2 height, corner-drag projection
   FireState.qml          bindable wrapper around fire.js state, timers, sound toggle
   FirePopup.qml          header, scene, footer, keys
   FireScene.qml          Canvas, pointer input, toast
@@ -29,7 +30,7 @@ The host-independent components live in `ui/fire/` because a qmldir that declare
 
 - `PluginRegistry.validateManifest` requires `schemaVersion: 1`, `id`, `name`, `version`, `kinds`, `entryPoints`; entry points must be relative with no `..`; `barWidget.defaultSection` must be one of `left`, `centerBegin`, `center`, `centerEnd`, `tray`, `right`. No category validation; first-party categories seen: Status, AI, Compositor, Audio, Layout, System, Network, Time, Files, Info, Media. OmaFire uses `Info`.
 - The bar injects `bar`, `moduleName`, `settings`, `fixedEdge` into the widget (`qs.Ui/BarWidget`).
-- Popup: `qs.Ui/KeyboardPanel` (a full-screen layer-shell PanelWindow, card placed inside). It handles top/bottom/left/right bars, clamps the card to the output with `Style.gapsOut` margins, dismisses on outside click (including other outputs), primes keyboard focus, and coordinates with `bar.requestPopout/releasePopout`. When another popup takes over, the bar calls `owner.closeForPopoutSwitch()`. OmaFire sets `padding: 0`, `borderSpec: Border.none()`, `contentWidth: 390`, `contentHeight: 381`, and draws its own border and square corners over the host card, so the themed card color and corner radius never show.
+- Popup: `qs.Ui/KeyboardPanel` (a full-screen layer-shell PanelWindow, card placed inside). It handles top/bottom/left/right bars, clamps the card to the output with `Style.gapsOut` margins, dismisses on outside click (including other outputs), primes keyboard focus, and coordinates with `bar.requestPopout/releasePopout`. When another popup takes over, the bar calls `owner.closeForPopoutSwitch()`. OmaFire sets `padding: 0`, `borderSpec: Border.none()`, and draws its own border and square corners over the host card, so the themed card color and corner radius never show. `contentWidth` / `contentHeight` follow `panel.js` (default 390 x 381). The lower-left grip sets the width; the scene stays 3:2, so the height follows. The host centers the card on the icon and eases `drawnHeight` over 200 ms once the panel is open, so a drag turns that ease off (`heightLive = false`) and projects the pointer onto the corner's path (`-1/2` in x, `+2/3` in y per width pixel, or the slope measured once the card hits the screen). Width clamps to 300–960.
 - Palette: the default look is the reference's fixed colors, so `Commons.Color` is not used. `Style.reduceMotion` is read for reduced motion.
 - IPC: on Omarchy 4.5, `ShellIpc` from `qs.Commons` (an `IpcHandler` that `omarchy-shell` can also answer over the shell's socket), in `ui/FireIpcShell.qml`. 4.0.x has no `ShellIpc`, so `FireSession` creates that file at runtime and falls back to `ui/FireIpcPlain.qml`, a bare `IpcHandler` that `qs ipc` reaches (4.0.x's `omarchy-shell` uses `qs ipc`). Both files hold the same calls. It lives in the singleton, so there is one handler no matter how many bars exist.
 - Omarchy 4.0.x support: QML checks types and property names when it parses a file, so no file the bar loads may name 4.5-only API. The popup is a plain child `Loader` of `KeyboardPanel` (both versions take children; only 4.5 has the lazy `content` slot), and `Style.reduceMotion` (4.5 only) is read as `=== true`. `tests/compat.test.js` guards this.
@@ -58,6 +59,7 @@ Ported from `reference/animation.js` with identical arithmetic and random draw o
 - On load, fuel and heat advance analytically by the time since `savedAt`. Absences over 6 h restore straight to Resting. A clock that went backwards counts as no time. Corrupt or out-of-range JSON starts the default fire (0.68/0.68).
 - The scene clock (`elapsed`), particles, and toast are not saved.
 - Sound is not saved: it starts off every session, matching "default off".
+- Panel width is a sibling file, `panel.json` (`{"width":520}`), next to `state.json` (and next to `OMAFIRE_STATE` in tests). It is written when a corner drag ends. Missing, corrupt, or non-numeric JSON keeps 390. A number outside 300–960 is clamped. The fire document is not given a width field.
 
 ## Rendering
 
@@ -71,7 +73,9 @@ The scene Canvas is 360 x 240 logical and scaled to the 388 px interior with `sm
 - With a non-zero dirty origin it crops the image and then offsets by the origin again, so the region lands in the wrong place. OmaFire puts whole 24 x 24 tile images at their own position with a 0,0 origin.
 - `CanvasPixelArray` stores premultiplied pixels: set alpha before color.
 - `putImageData` draws through the device-pixel-ratio scale, but `getImageData` reads raw device pixels, and a scaled `drawImage` filters. The background decoder canvas is therefore sized in device pixels and draws the art with `ctx.scale(1/dpr)`, which reproduces ImageMagick's decode exactly at 1x, 1.5x and 2x.
-- The ratio has to come from the window. With fractional scaling on Wayland, `Screen.devicePixelRatio` reports 2 while the window uses 1.33, which left the art in the top-left two-thirds of the scene. Offscreen runs can't show this because both values match there. A new layer-shell window also passes through other ratios (2, then 1, then 1.33) before it settles, so art decoded at a stale ratio is decoded again.
+- The decoder ratio has to come from the window. With fractional scaling on Wayland, `Screen.devicePixelRatio` reports 2 while the window uses 1.33 or 1.6, and sizing the decoder from the screen leaves the art in the top-left of the scene. Offscreen runs can't show this because both values match there. A new layer-shell window also passes through other ratios (2, then 1, then 1.33) before it settles, so art decoded at a stale ratio is decoded again.
+- On the same output the canvas picture occupies `windowDpr/screenDpr` of its item, top-left. The scene and the bar icon multiply by `screenDpr/windowDpr` from the top-left and clip. When the two ratios match, including offscreen `QT_SCALE_FACTOR` at 1x and 2x, that factor is 1.
+- The same mismatch shows a pixel that replaces the campsite `screenDpr/windowDpr` farther from the origin than the art (1.25 at 2 / 1.6). It is already there at the default panel size and grows with the picture, so the flames sit the same fraction off the ring at every size. While the ratios differ the scene copies the whole frame and samples the opaque hearth pixels (flames, embers, sparks) back by that factor. The light pool only nudges the art; sampling it back paints the near logs black, so those pixels stay with the campsite. Matched ratios still use the tile path.
 
 Per frame, fire.js flags the tiles it drew into; the scene recopies those and last frame's tiles, writing only pixels that changed.
 
@@ -102,6 +106,12 @@ RSS is about 480 MB for the whole shell, not OmaFire's share.
 `scripts/gen-crackle.py` follows the reference's Web Audio graph: brown noise (`(b + white * 0.035) / 1.02`, x4) through an RBJ 950 Hz lowpass, plus crackles (probability 0.00015 per sample, 90-790 samples, `(1 - k/n)^5` envelope, 0.65), mixed at the reference gains for heat 0.68, 5 s at 22.05 kHz mono 16-bit, with a 0.25 s equal-power crossfade so the loop is seamless. Seed 5919, so the file regenerates byte for byte.
 
 Playback uses `MediaPlayer` + `AudioOutput`, not `SoundEffect`: SoundEffect refused the 22.05 kHz mono format on PipeWire because it doesn't resample. Volume is `0.22 * (0.1 + heat * 0.6) / 0.508`, faded over 0.3 s. Playing requires sound on and the popup open; closing fades it out and stops the player, unload destroys it. No output device, a missing QtMultimedia, or a player error shows "Sound unavailable." and leaves it off. The sound itself has not been listened to on real speakers.
+
+## Night sounds
+
+`scripts/gen-night.py` writes three one-shots, same format as the crackle (22.05 kHz mono 16-bit): `assets/cricket.wav` (four damped pulses near 2.4 kHz, lowpassed at 2.1 kHz, a dull reflection at 46 ms), `assets/peep.wav` (a rising whistle, lowpassed at 1.9 kHz), `assets/croak.wav` (two low syllables, lowpassed at 780 Hz). Seed 5919. Playback gain is about 0.04 to 0.06, under the crackle's 0.22, and only while sound is on and the popup is open.
+
+`ui/fire/night.js` schedules them. A cricket phrase is 4 to 7 chirps at one rate between 0.86 and 1.10 seconds, then a rest of at least 14 seconds (sometimes half a minute). About one phrase in a few gets a quieter answering chirp 0.30 to 0.38 seconds after a chirp. The first chirp waits 6 to 9.5 seconds so the fire is heard first. A frog calls on its own clock, first after 22 to 34 seconds, then every 28 seconds or longer, a peep about two thirds of the time and a croak the rest. A quarter of the calls double 1.1 to 1.45 seconds later. A frog that would start on the same instant as a chirp waits a fraction of a second.
 
 ## Font
 

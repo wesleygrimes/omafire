@@ -56,7 +56,7 @@ test("manifest matches the host registry's rules", () => {
   assert.ok(["left", "centerBegin", "center", "centerEnd", "tray", "right"].includes(m.barWidget.defaultSection));
   assert.equal(m.barWidget.allowMultiple, false);
   assert.equal(m.name, "OmaFire");
-  assert.equal(m.version, "0.1.0");
+  assert.equal(m.version, "0.2.0");
   assert.equal(m.license, "MIT");
   assert.ok(fs.existsSync(path.join(ROOT, "LICENSE")));
   assert.ok(fs.existsSync(path.join(ROOT, "preview.png")), "marketplace preview");
@@ -79,4 +79,26 @@ test("crackle loop is small, mono, and regenerates byte for byte", () => {
   let maxStep = 0;
   for (let i = 1; i < n; i++) maxStep = Math.max(maxStep, Math.abs(s(i) - s(i - 1)));
   assert.ok(Math.abs(s(0) - s(n - 1)) <= maxStep, "loop seam is no bigger than any step inside the loop");
+});
+
+test("night calls are short, quiet, and regenerate byte for byte", () => {
+  const { execFileSync } = require("child_process");
+  const tmp = path.join(ROOT, "tests", "out", "night-regen");
+  fs.mkdirSync(tmp, { recursive: true });
+  execFileSync("python3", [path.join(ROOT, "scripts", "gen-night.py"), tmp], { stdio: "ignore" });
+  for (const name of ["cricket.wav", "peep.wav", "croak.wav"]) {
+    const wav = fs.readFileSync(path.join(ROOT, "assets", name));
+    assert.equal(wav.toString("ascii", 0, 4), "RIFF", name);
+    assert.equal(wav.readUInt16LE(22), 1, `${name} mono`);
+    assert.equal(wav.readUInt32LE(24), 22050, name);
+    assert.equal(wav.readUInt16LE(34), 16, name);
+    const samples = (wav.length - 44) / 2;
+    assert.ok(samples / 22050 < 0.4, `${name} is one call, not a loop`);
+    assert.ok(samples / 22050 > 0.08, `${name} is long enough to read as a call`);
+    let peak = 0;
+    for (let i = 0; i < samples; i++) peak = Math.max(peak, Math.abs(wav.readInt16LE(44 + i * 2)));
+    assert.ok(peak > 1000 && peak < 16000, `${name} peak ${peak} stays soft in the file`);
+    assert.equal(wav.readInt16LE(44 + (samples - 1) * 2), 0, `${name} ends in silence`);
+    assert.ok(fs.readFileSync(path.join(tmp, name)).equals(wav), `scripts/gen-night.py reproduces assets/${name}`);
+  }
 });

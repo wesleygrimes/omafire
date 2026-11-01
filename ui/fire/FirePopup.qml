@@ -1,8 +1,11 @@
 import QtQuick
+import "panel.js" as Panel
 
 // The compact popup from the approved reference: 390 px wide including its
 // 1 px border, OMAFIRE header with the status label, the 3:2 scene, three
 // footer buttons and the hint. Plain QtQuick so it renders standalone.
+// panelWidth is the one size the host saves. Leave it at the default and the
+// popup is the reference 390 x 381.
 //
 // Keys: A adds a log, S stokes, M toggles sound, Escape asks to close, Tab
 // moves between the buttons (Space/Enter press them).
@@ -13,18 +16,25 @@ FocusScope {
     property bool running: true
     property string fontFamily: "monospace"
     property bool keyboardFocusVisible: false
+    property int panelWidth: Panel.DEFAULT_WIDTH
+    property bool resizeActive: false
 
     signal closeRequested()
+    // The host owns the width (it also sizes the card). Assigning panelWidth
+    // here would break that binding.
+    signal panelWidthCommit(int next)
+    signal resizeDragged()
 
     readonly property alias scene: scene
     readonly property alias addButton: addButton
     readonly property alias stokeButton: stokeButton
     readonly property alias soundButton: soundButton
+    readonly property alias resizeGrip: grip
 
     readonly property int interiorWidth: width - 2
 
-    implicitWidth: 390
-    implicitHeight: 1 + header.height + 1 + scene.height + footer.height + 1
+    implicitWidth: panelWidth
+    implicitHeight: Panel.panelHeight(panelWidth)
     width: implicitWidth
     height: implicitHeight
     focus: true
@@ -76,7 +86,7 @@ FocusScope {
         x: 1
         y: 1
         width: root.interiorWidth
-        height: 36
+        height: Panel.HEADER
 
         Text {
             x: 12
@@ -127,7 +137,7 @@ FocusScope {
         x: 1
         y: scene.y + scene.height
         width: root.interiorWidth
-        height: 1 + 11 + 36 + 9 + 16 + 10
+        height: Panel.FOOTER
 
         Rectangle { width: parent.width; height: 1; color: "#3d4140" }
 
@@ -192,5 +202,92 @@ FocusScope {
     // MouseAreas take their presses first, so they report them above).
     PointHandler {
         onActiveChanged: if (active) root.keyboardFocusVisible = false
+    }
+
+    // Lower-left corner. The host centers the card, so this drag asks for a
+    // new width and the height follows. The grip remembers where the pointer
+    // sat inside it and how the corner actually moved, then projects the
+    // remaining error onto that path.
+    Item {
+        id: grip
+        objectName: "resizeGrip"
+        anchors.left: parent.left
+        anchors.bottom: parent.bottom
+        width: 22
+        height: 22
+        z: 2
+
+        Accessible.role: Accessible.Pane
+        Accessible.name: "Resize"
+
+        Rectangle { x: 4; y: 16; width: 2; height: 2; color: "#b7ab9c" }
+        Rectangle { x: 8; y: 16; width: 2; height: 2; color: "#b7ab9c" }
+        Rectangle { x: 12; y: 16; width: 2; height: 2; color: "#b7ab9c" }
+        Rectangle { x: 4; y: 12; width: 2; height: 2; color: "#b7ab9c" }
+        Rectangle { x: 8; y: 12; width: 2; height: 2; color: "#b7ab9c" }
+        Rectangle { x: 4; y: 8; width: 2; height: 2; color: "#b7ab9c" }
+
+        MouseArea {
+            id: gripArea
+            anchors.fill: parent
+            acceptedButtons: Qt.LeftButton
+            hoverEnabled: true
+            preventStealing: true
+            cursorShape: Qt.SizeBDiagCursor
+
+            property real holdX: 0
+            property real holdY: 0
+            property real slopeX: -0.5
+            property real slopeY: 2 / 3
+            property real trackedWidth: 0
+            property real trackedX: 0
+            property real trackedY: 0
+
+            function corner() { return root.mapToGlobal(0, root.height); }
+
+            function trackSlope(corner) {
+                var moved = root.panelWidth - trackedWidth;
+                if (Math.abs(moved) < 2) return;
+                var sx = (corner.x - trackedX) / moved;
+                var sy = (corner.y - trackedY) / moved;
+                if (sx * sx + sy * sy <= 0.04) return;
+                slopeX = sx;
+                slopeY = sy;
+                trackedWidth = root.panelWidth;
+                trackedX = corner.x;
+                trackedY = corner.y;
+            }
+
+            onPressed: function (mouse) {
+                var pointer = mapToGlobal(mouse.x, mouse.y);
+                var at = corner();
+                holdX = pointer.x - at.x;
+                holdY = pointer.y - at.y;
+                trackedWidth = root.panelWidth;
+                trackedX = at.x;
+                trackedY = at.y;
+                slopeX = -0.5;
+                slopeY = 2 / 3;
+                root.resizeActive = true;
+                root.resizeDragged();
+            }
+            onPositionChanged: function (mouse) {
+                if (!pressed) return;
+                root.resizeDragged();
+                var pointer = mapToGlobal(mouse.x, mouse.y);
+                var at = corner();
+                trackSlope(at);
+                var errX = pointer.x - holdX - at.x;
+                var errY = pointer.y - holdY - at.y;
+                var dW = Panel.widthDeltaForCorner(errX, errY, slopeX, slopeY);
+                if (dW > 120) dW = 120;
+                if (dW < -120) dW = -120;
+                if (Math.abs(dW) < 0.5) return;
+                var next = Panel.clampWidth(root.panelWidth + dW);
+                if (next !== root.panelWidth) root.panelWidthCommit(next);
+            }
+            onReleased: root.resizeActive = false
+            onCanceled: root.resizeActive = false
+        }
     }
 }
