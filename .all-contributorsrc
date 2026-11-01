@@ -41,6 +41,15 @@
       "contributions": [
         "code"
       ]
+    },
+    {
+      "login": "calledtoconstruct",
+      "name": "Joseph",
+      "avatar_url": "https://avatars.githubusercontent.com/u/9035098?v=4",
+      "profile": "https://promisemeforever.com",
+      "contributions": [
+        "code"
+      ]
     }
   ],
   "commitType": "docs"
