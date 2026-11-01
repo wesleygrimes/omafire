@@ -37,7 +37,7 @@ The host-independent components live in `ui/fire/` because a qmldir that declare
 
 ## Simulation and timing
 
-Ported from `reference/animation.js` with identical arithmetic and random draw order (seed 5919). The parity test runs the original script and `fire.js` through the same frame clock and inputs and compares every drawn frame; they are bit-identical.
+Ported from `reference/animation.js` with identical arithmetic and random draw order (seed 5919). The parity test runs the original script and `fire.js` through the same frame clock and inputs and compares every drawn frame outside the native moonlight bounds (`218 <= x < 309`, `90 <= y < 143`). The fire simulation and reference rendering there remain unchanged.
 
 - Fuel decays 0.00125/s: full load 800 s, initial 0.68 lasts 544 s, one log adds 200 s.
 - While the popup is open the simulation steps every 16 ms (the reference stepped every animation frame) with dt capped at 0.08 s, and the scene draws every 50 ms (180 ms with reduced motion).
@@ -60,7 +60,9 @@ Ported from `reference/animation.js` with identical arithmetic and random draw o
 
 ## Rendering
 
-`fire.js` composites each frame into a 360 x 240 RGBA buffer using canvas 2D semantics: source-over with alpha, separable `screen` for the light pool, 4 x 4 supersampled coverage for the rotated log, area coverage for the 1 px dashed drop rectangle, nearest sampling of the 720 x 480 art. Chromium's nearest drawImage resolves exact pixel-boundary ties to the lower source pixel (the art is sampled at even coordinates); the port does the same and matches `reference/approved-scene.png` exactly away from the fire.
+`fire.js` composites each frame into a 360 x 240 RGBA buffer using canvas 2D semantics: source-over with alpha, separable `screen` for the light pool, 4 x 4 supersampled coverage for the rotated log, area coverage for the 1 px dashed drop rectangle, nearest sampling of the 720 x 480 art. Chromium's nearest drawImage resolves exact pixel-boundary ties to the lower source pixel (the art is sampled at even coordinates); the port does the same and matches `reference/approved-scene.png` exactly away from the fire and native moonlight.
+
+The native moonlight overlay leaves the original artwork unchanged. It gently brightens and dims the painted reflection and adds short silver-blue glints. A cached color mask restricts it to water and reflected light beneath the moon; the island and foreground pines occlude the effect. Animation uses `elapsed` and deterministic hashes without consuming the simulation's random stream. It runs through the existing scene timer and dirty-region copying path, so it stops drawing when the popup closes and follows the reduced-motion frame rate.
 
 The scene Canvas is 360 x 240 logical and scaled to the 388 px interior with `smooth: false`. Qt 6.12 quirks found and worked around:
 
@@ -106,6 +108,7 @@ The reference asks for `ui-monospace, SFMono-Regular, Consolas, monospace`. On t
 
 ## Differences from the reference
 
+- The lake reflection shimmers with native moonlight; reference pixel comparisons exclude only its fixed bounds, with separate animation and masking tests.
 - Popup height is 381 px; the reference is 381.16 because its scene is 258.67 px tall. Here the scene is 259 px (rounded) and the hint box 16 px instead of 16.5, keeping borders on whole pixels. Text in the footer sits a fraction of a pixel differently.
 - Text antialiasing differs slightly (Qt vs Chromium rasterizer); header/footer pixels are within 24 levels for about 96-98%.
 - Hover brightens fill, border and text by 1.25 like CSS `brightness(1.25)`; press moves the button face down 1 px.
@@ -122,9 +125,10 @@ The reference asks for `ui-monospace, SFMono-Regular, Consolas, monospace`. On t
 
 | File | What |
 | --- | --- |
-| `tests/parity.test.js` | original reference script on a canvas emulator vs fire.js, every drawn frame, with add log, stoke, drag, poke, invalid drop; dirty-tile coverage |
-| `tests/chrome.test.js` | reference fragment in headless Chromium with a stubbed frame clock vs fire.js at the same frames |
-| `tests/scene.test.js` | background and closest frame vs `reference/approved-scene.png`; flame palette |
+| `tests/parity.test.js` | original reference script on a canvas emulator vs fire.js outside moonlight bounds, every drawn frame, with add log, stoke, drag, poke, invalid drop; full dirty-tile coverage |
+| `tests/chrome.test.js` | reference fragment in headless Chromium with a stubbed frame clock vs fire.js at the same frames, outside moonlight bounds |
+| `tests/scene.test.js` | background and closest frame vs `reference/approved-scene.png` outside moonlight bounds; flame palette |
+| `tests/moonlight.test.js` | deterministic lake shimmer, water masking and occlusion, animation bounds, unchanged simulation state |
 | `tests/sim.test.js` | timings, actions, hit tests, status table, toast, dt cap, analytic advance, caps, persistence, icon |
 | `tests/package.test.js` | art hash, no symlinks, no machine paths, manifest rules, sound file regenerates |
 | `tests/qml.test.js` | qmltestrunner offscreen at 1x and 2x (`tests/qml/`): real mouse/key events, focus ring after a click (`tst_focus.qml`), geometry, grabs, no warnings; grabbed scene compared with fire.js pixel for pixel; `omarchy plugin validate` |

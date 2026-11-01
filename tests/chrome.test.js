@@ -13,6 +13,9 @@ const { chromium, SCRIPT, clockStep, writeHarness, dump, hexToRGBA } = require("
 const Fire = loadFire();
 const BIN = chromium();
 const CAPTURE = [60, 130, 175, 230];
+// The native lake animation is tested separately; keep reference coverage
+// everywhere else, with bounds independent of the renderer.
+const outsideLake = (x, y) => !(x >= 218 && x < 309 && y >= 90 && y < 143);
 
 function runOurs(lastFrame) {
   const src = backgroundRGBA();
@@ -38,16 +41,16 @@ function runOurs(lastFrame) {
   return { frames, s };
 }
 
-test("fire.js matches the reference rendered by Chromium at the same frames", { skip: !BIN && "chromium not installed" }, () => {
+test("fire.js matches the reference outside the lake rendered by Chromium at the same frames", { skip: !BIN && "chromium not installed" }, () => {
   const file = writeHarness("same-time", { captureFrames: CAPTURE, stopFrame: Math.max(...CAPTURE) });
   const chrome = dump(BIN, file);
   const ours = runOurs(Math.max(...CAPTURE));
-  const fireArea = (x, y) => x > 100 && x < 262 && y > 80 && y < 225;
+  const fireArea = (x, y) => x > 100 && x < 262 && y > 80 && y < 225 && outsideLake(x, y);
   for (const frame of CAPTURE) {
     const ref = hexToRGBA(chrome[frame]);
     writePNG(path.join(OUT, "chrome", `chrome-${frame}.png`), ref, 360, 240);
     writePNG(path.join(OUT, "chrome", `ours-${frame}.png`), ours.frames[frame], 360, 240);
-    const all = compare(ref, ours.frames[frame], 360, 240, 8);
+    const all = compare(ref, ours.frames[frame], 360, 240, 8, outsideLake);
     const fire = compare(ref, ours.frames[frame], 360, 240, 8, fireArea);
     console.log(`# chrome frame ${frame}: whole scene mean abs ${all.meanAbs.toFixed(3)}, ${(all.withinTol * 100).toFixed(2)}% within 8; ` +
       `fire area mean abs ${fire.meanAbs.toFixed(3)}, ${(fire.withinTol * 100).toFixed(2)}% within 8, max ${all.maxDiff}`);

@@ -1,6 +1,7 @@
 // Render and simulation parity: the original reference script (run in node on
 // the MiniContext canvas emulator) versus ui/fire.js, driven by the same frame
-// clock and the same inputs. Every drawn frame is compared pixel by pixel.
+// clock and the same inputs. Every drawn frame is compared pixel by pixel
+// outside the native lake animation, which has its own coverage tests.
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
@@ -11,6 +12,8 @@ const { backgroundRGBA, writePNG, OUT, compare } = require("./lib/images");
 
 const Fire = loadFire();
 const bgSrc = backgroundRGBA();
+// Fixed independently of the renderer so this cannot hide changes elsewhere.
+const outsideLake = (x, y) => !(x >= 218 && x < 309 && y >= 90 && y < 143);
 
 // Mirrors the reference loop(now): dt from the frame clock (first frame
 // 0.016, then capped at 0.08), update every frame, draw when 50 ms passed.
@@ -72,7 +75,7 @@ function inputs(frame, ref, mine) {
   }
 }
 
-test("fire.js matches the reference frame by frame (pixels, state, status, toast)", () => {
+test("fire.js matches the reference outside the lake frame by frame (pixels, state, status, toast)", () => {
   const ref = createReference(bgSrc);
   const mine = ours();
   let now = 1000, draws = 0, worst = { frame: -1, meanAbs: 0, withinTol: 1, maxDiff: 0 };
@@ -89,7 +92,7 @@ test("fire.js matches the reference frame by frame (pixels, state, status, toast
     if (rt.visible) assert.equal(mine.s.toastText, rt.text);
     if (!drew) continue;
     draws++;
-    const c = compare(ref.ctx.data, mine.fb, 360, 240, 2);
+    const c = compare(ref.ctx.data, mine.fb, 360, 240, 2, outsideLake);
     if (c.meanAbs > worst.meanAbs || c.withinTol < worst.withinTol) worst = { frame, ...c };
     if ((snapshots.length && frame >= snapshots[0]) || c.withinTol < 0.999) {
       const tag = snapshots.length && frame >= snapshots[0] ? snapshots.shift() : frame;

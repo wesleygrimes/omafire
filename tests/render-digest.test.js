@@ -1,8 +1,8 @@
 // fire.js's renderer is tuned for the QML engine (dirty rectangles, hoisted
-// arithmetic, per-row flame bounds). None of that may change a pixel: this
-// scenario's frames must hash to the digest recorded from the straightforward
-// renderer (commit 94f0a47), and the dirty rectangles must cover every pixel
-// that differs from the art.
+// arithmetic, per-row flame bounds). This scenario locks the frames including
+// the native moonlight animation; the dirty rectangles must cover every pixel
+// that differs from the art. Legacy fire pixels are checked against the
+// original renderer independently in parity.test.js.
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
@@ -14,7 +14,7 @@ const Fire = loadFire();
 const src = backgroundRGBA();
 const bg = Fire.prepareBackground(src.data, src.width, src.height);
 
-const DIGEST = "ed179f77bc1d51e7f8e0a39811e6d0fca93045bdb4b834f1f85ee21b7805637a";
+const DIGEST = "7c7da9dbc7572cba66be92f480a89003915e154b85c5cc6a3b93e540e931f67d";
 
 function scenario(onFrame) {
   const s = Fire.createState();
@@ -47,7 +47,7 @@ function scenario(onFrame) {
   return hash.digest("hex");
 }
 
-test("renderer output is unchanged, frame for frame", () => {
+test("renderer output matches the approved moonlight frames", () => {
   const d = scenario();
   console.log(`# render digest ${d}`);
   assert.equal(d, DIGEST);
