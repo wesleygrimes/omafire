@@ -3,6 +3,7 @@ import Quickshell
 import qs.Ui
 import qs.Commons
 import "fire"
+import "fire/panel.js" as Panel
 
 // Bar widget entry point. The icon toggles the popup; the popup is a
 // KeyboardPanel anchored to the icon (the host clamps it to the output and
@@ -23,6 +24,10 @@ BarWidget {
     function open() { popoutSwitchClosing = false; session.openOn(root); }
     function close() { if (session.owner === root) session.closePopup(); }
     function closeForPopoutSwitch() { popoutSwitchClosing = true; close(); }
+    // KeyboardPanel eases contentHeight over 200 ms once the card is open.
+    // A corner drag has to follow the pointer, so the ease stays off while
+    // the grip is down. The host turns it back on the next time the panel opens.
+    function holdPanelHeight() { panel.heightLive = false; }
 
     // Hover tooltip through the host bar, like the first-party widgets:
     // "OmaFire: Burning steadily", kept current while hovered, hidden on
@@ -64,8 +69,8 @@ BarWidget {
         // edge over the host card, so the reference look holds on any theme.
         padding: 0
         borderSpec: Border.none()
-        contentWidth: 390
-        contentHeight: 381
+        contentWidth: root.session.panelWidth
+        contentHeight: Panel.panelHeight(root.session.panelWidth)
         focusTarget: popupLoader.item
         // Built on first open and kept, like the host's lazy `content` slot.
         // That slot is Omarchy 4.5 only and assigning it fails to parse on
@@ -80,6 +85,16 @@ BarWidget {
                 FirePopup {
                     fire: root.session.fire
                     running: root.opened
+                    panelWidth: root.session.panelWidth
+                    onPanelWidthCommit: next => root.session.setPanelWidth(next)
+                    onResizeDragged: root.holdPanelHeight()
+                    onResizeActiveChanged: active => {
+                        if (active) root.holdPanelHeight();
+                        else {
+                            panel.heightLive = true;
+                            root.session.savePanel();
+                        }
+                    }
                     onCloseRequested: root.close()
                 }
             }

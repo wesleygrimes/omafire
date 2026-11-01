@@ -33,7 +33,9 @@ Item {
     // (720 x 480 divided by the ratio) and draws the art unscaled, so
     // getImageData returns it 1:1 (checked against ImageMagick's decode).
     // Ask the window, not Screen: with fractional scaling Screen reports the
-    // output's integer scale (2 at 1.33x) while the window really uses 1.33.
+    // output's integer scale (2 at 1.33x and at 1.6x) while the window really
+    // uses the fractional scale. Sizing the decoder from Screen leaves the
+    // art in the top-left of the scene.
     readonly property real dpr: Window.window && Window.window.devicePixelRatio > 0
         ? Window.window.devicePixelRatio
         : (Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1)

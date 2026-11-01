@@ -13,6 +13,7 @@ Item {
     property var borderSpec: null
     property int contentWidth: 0
     property int contentHeight: 0
+    property bool heightLive: false
     property Item focusTarget: null
     default property alias contentItem: holder.children
     property Component content: null

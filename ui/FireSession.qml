@@ -5,6 +5,7 @@ import Quickshell.Io
 import Quickshell.Hyprland
 import qs.Commons
 import "fire"
+import "fire/panel.js" as Panel
 
 // The plugin's one fire, shared by every bar (one per monitor), its saved
 // state, and its IPC target. Bar widgets register here; at most one of them
@@ -18,6 +19,14 @@ Singleton {
     // OMAFIRE_STATE names another file (tests).
     readonly property string statePath: Quickshell.env("OMAFIRE_STATE")
         || (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/omafire/state.json"
+    // Beside state.json, so OMAFIRE_STATE (the tests) redirects both files.
+    // Width is not part of the fire document: that one stays {version, fuel, heat, savedAt}.
+    readonly property string panelPath: {
+        var cut = statePath.lastIndexOf("/");
+        return (cut < 0 ? "" : statePath.substring(0, cut + 1)) + "panel.json";
+    }
+    property int panelWidth: Panel.DEFAULT_WIDTH
+    property bool panelLoaded: false
 
     property var widgets: []
     property var owner: null
@@ -70,6 +79,36 @@ Singleton {
         if (!loaded) return;
         store.setText(fire.serialize() + "\n");
         dirty = false;
+    }
+
+    function setPanelWidth(width) {
+        var next = Panel.clampWidth(width);
+        if (next !== panelWidth) panelWidth = next;
+    }
+
+    function applyPanel(text) {
+        try {
+            var o = JSON.parse(text);
+            if (o && typeof o.width === "number" && isFinite(o.width))
+                panelWidth = Panel.clampWidth(o.width);
+        } catch (e) { /* missing or broken: the default width stands */ }
+    }
+
+    function savePanel() {
+        if (!panelLoaded) return;
+        panelStore.setText(JSON.stringify({ width: panelWidth }) + "\n");
+    }
+
+    property FileView panelStore: FileView {
+        path: session.panelPath
+        blockLoading: true
+        printErrors: false
+        atomicWrites: true
+        onLoaded: {
+            session.applyPanel(text());
+            session.panelLoaded = true;
+        }
+        onLoadFailed: session.panelLoaded = true
     }
 
     property bool dirty: false
