@@ -93,7 +93,9 @@ Remove a manual install with `omarchy plugin disable wesleygrimes.omafire`, then
 
 ## How it works
 
-The fire started life as a small browser prototype. OmaFire is a straight port of its drawing code into QML: the same noise, palette, sparks, smoke, light, and timing, drawn into a 360 by 240 pixel buffer and scaled up without smoothing so it stays crisp on HiDPI screens. The tests check that the port produces the same pixels as the original, frame for frame.
+The fire started life as a small browser prototype. OmaFire ports its drawing code into QML: the same noise, palette, sparks, smoke, light, and timing, drawn into a 360 by 240 pixel buffer and scaled up without smoothing so it stays crisp on HiDPI screens. The lake adds gently rippling moonlight and silver-blue glints. The tests check that the fire produces the same pixels as the original, frame for frame, and that the lake animation stays on the water.
+
+![Shimmering moonlight on the lake](docs/screenshots/shimmering-lake.gif)
 
 It only draws while the popup is open, and then only the parts of the picture that changed. With the popup closed the cost is the bar icon, which is about 1% of one core on my VM. With it open it's roughly a fifth of one core, which is about what a small animated campfire should cost you.
 

@@ -4,7 +4,7 @@
 // JavaScript with no QML or DOM dependencies, so the shell loads it as a
 // library and node loads it in tests (tests/lib/load-fire.js).
 //
-// Every number, colour, and the order of random draws match the reference.
+// Fire colours, arithmetic, and random draw order match the reference.
 // Native additions are marked "native:".
 
 var W = 360, H = 240, BASE_X = 181, BASE_Y = 187;
@@ -349,6 +349,79 @@ var _background = null;
 function cachedBackground() { return _background; }
 function cacheBackground(bg) { _background = bg; return bg; }
 
+// native: moonlight follows the reflection painted into the lake. Cache a
+// water-only mask from the art so ripples disappear behind the island and
+// foreground pines. The two stretches are separated by the wooded island.
+// None of this uses the simulation's random stream.
+var _lakeOf = null, _lakeRows = [], _lakeMask = null;
+var MOON_SILVER = [230, 234, 218], MOON_BLUE = [151, 194, 224];
+function prepareLake(bg) {
+    _lakeOf = bg;
+    _lakeRows = [];
+    _lakeMask = new Uint8Array(W * H);
+    for (var y = 90; y < 143; y++) {
+        if (y >= 100 && y < 109) continue;
+        var row = { y: y, pixels: [], ripples: [] };
+        var spread = 16 + (y - 90) * 0.27;
+        for (var x = 218; x < 309; x++) {
+            var i = (y * W + x) * 4, r = bg[i], g = bg[i + 1], b = bg[i + 2];
+            var water = b >= 56 && b > r * 1.55 && b > g * 1.18 && g >= 25;
+            var reflection = r >= 65 && g >= 65 && b >= 50 && g > r * 0.85 && r > b * 0.95;
+            var path = Math.max(0, 1 - Math.abs(x - 275) / spread);
+            if ((!water && !reflection) || path === 0) continue;
+            _lakeMask[y * W + x] = 1;
+            row.pixels.push({ i: i, path: path, reflection: Math.min(1, Math.max(0, (r - 45) / 150)) });
+        }
+        if (!row.pixels.length) continue;
+        // Short, staggered horizontal glints keep the original pixel style.
+        for (var k = 0; k < 3; k++) {
+            var h = hash(y, k + 73);
+            row.ripples.push({
+                x: 275 + (k - 1) * spread * 0.52 + (h - 0.5) * 7,
+                w: 1 + Math.floor(hash(y, k + 91) * 5),
+                phase: h * Math.PI * 2, speed: 1.2 + hash(y, k + 107) * 1.1,
+                color: k === 1 ? MOON_SILVER : MOON_BLUE
+            });
+        }
+        _lakeRows.push(row);
+    }
+}
+
+function drawMoonlight(fb, bg, t) {
+    if (!bg) return;
+    if (_lakeOf !== bg) prepareLake(bg);
+    for (var n = 0; n < _lakeRows.length; n++) {
+        var row = _lakeRows[n], y = row.y;
+        // Slow waves brighten and dim the existing reflection; a faint blue
+        // sheen joins it to the darker water on either side.
+        var wave = 0.9 + 0.13 * Math.sin(t * 1.6 - y * 0.78) + 0.07 * Math.sin(t * 2.7 + y * 0.41);
+        var crest = Math.max(0, Math.sin(t * 1.1 - y * 0.71));
+        var sheen = 0.015 + 0.035 * crest * crest * crest * crest;
+        for (var p = 0; p < row.pixels.length; p++) {
+            var pixel = row.pixels[p], i = pixel.i;
+            var light = 1 + (wave - 1) * pixel.reflection;
+            fb[i] = bg[i] * light;
+            fb[i + 1] = bg[i + 1] * light;
+            fb[i + 2] = bg[i + 2] * light;
+            blend(fb, i, MOON_BLUE, sheen * pixel.path);
+        }
+        for (var k = 0; k < row.ripples.length; k++) {
+            var ripple = row.ripples[k];
+            var pulse = 0.5 + 0.5 * Math.sin(t * ripple.speed + ripple.phase);
+            var alpha = 0.65 * Math.pow(pulse, 6);
+            if (alpha < 0.015) continue;
+            var x0 = Math.round(ripple.x + 2 * Math.sin(t * 0.7 + ripple.phase));
+            for (var dx = 0; dx < ripple.w; dx++) {
+                var x = x0 + dx;
+                if (!_lakeMask[y * W + x]) continue;
+                var edge = ripple.w > 2 && (dx === 0 || dx === ripple.w - 1) ? 0.5 : 1;
+                blend(fb, (y * W + x) * 4, ripple.color, alpha * edge);
+            }
+        }
+        markDirty(218, y, 309, y + 1);
+    }
+}
+
 // ToUint8Clamp for 0 <= x <= 255: round half to even. x - (x | 0) is exact.
 function roundByte(x) {
     var f = x | 0, d = x - f;
@@ -648,6 +721,7 @@ function render(fb, s, bg, rects) {
     if (bg) fb.set(bg);
     else fillRect(fb, 0, 0, W, H, C.empty, 1);
     var t = s.elapsed;
+    drawMoonlight(fb, bg, t);
     for (i = 0; i < s.stars.length; i++) {
         var st = s.stars[i], sn = Math.sin(t * 0.7 + st.p);
         fillRect(fb, Math.floor(st.x), Math.floor(st.y), 1, 1, C.star, 0.25 + 0.4 * sn * sn);
@@ -738,7 +812,7 @@ if (typeof module !== "undefined" && module.exports) {
         update: update, advanceAnalytic: advanceAnalytic, tick: tick, status: status, statusIndex: statusIndex,
         serialize: serialize, restore: restore,
         roundByte: roundByte, createFrame: createFrame, prepareBackground: prepareBackground, render: render, drawLog: drawLog,
-        cachedBackground: cachedBackground, cacheBackground: cacheBackground,
+        cachedBackground: cachedBackground, cacheBackground: cacheBackground, drawMoonlight: drawMoonlight,
         createRects: createRects, RECT_MAX: RECT_MAX,
         iconCells: iconCells, ICON_SIZE: ICON_SIZE, ICON_COLORS: ICON_COLORS
     };

@@ -16,13 +16,17 @@ const src = backgroundRGBA();
 const bg = Fire.prepareBackground(src.data, src.width, src.height);
 const fireArea = (x, y) => x > 100 && x < 262 && y > 80 && y < 225;
 const starRows = (x, y) => y < 52;
+// The native lake animation is covered separately. Use fixed bounds here so
+// reference comparisons continue to catch changes elsewhere in the scene.
+const outsideLake = (x, y) => !(x >= 218 && x < 309 && y >= 90 && y < 143);
+const referenceFireArea = (x, y) => fireArea(x, y) && outsideLake(x, y);
 
 test("background is the approved art sampled exactly like the reference canvas", () => {
   const s = Fire.createState();
   const fb = Fire.createFrame();
   Fire.render(fb, s, bg);
   writePNG(path.join(OUT, "scene-initial.png"), fb, 360, 240);
-  const outside = compare(approved.data, fb, 360, 240, 0, (x, y) => !fireArea(x, y) && !starRows(x, y) && y < 225 || (y >= 225 && x < 60));
+  const outside = compare(approved.data, fb, 360, 240, 0, (x, y) => outsideLake(x, y) && (!fireArea(x, y) && !starRows(x, y) && y < 225 || (y >= 225 && x < 60)));
   console.log(`# outside fire and stars: ${(outside.withinTol * 100).toFixed(3)}% pixels identical`);
   assert.ok(outside.withinTol > 0.995, "background pixels identical away from fire, smoke, sparks and stars");
 });
@@ -34,10 +38,10 @@ test("closest idle frame matches the approved capture's fire", () => {
   for (let f = 1; f <= 360; f++) {
     Fire.update(s, 1 / 60);
     Fire.render(fb, s, bg);
-    const c = compare(approved.data, fb, 360, 240, 8, fireArea);
+    const c = compare(approved.data, fb, 360, 240, 8, referenceFireArea);
     if (!best || c.meanAbs < best.c.meanAbs) best = { f, t: s.elapsed, c, frame: Uint8ClampedArray.from(fb) };
   }
-  const whole = compare(approved.data, best.frame, 360, 240, 8);
+  const whole = compare(approved.data, best.frame, 360, 240, 8, outsideLake);
   console.log(`# approved-scene: best t=${best.t.toFixed(3)} s; fire area mean abs ${best.c.meanAbs.toFixed(3)}, ` +
     `${(best.c.withinTol * 100).toFixed(2)}% within 8; whole frame mean abs ${whole.meanAbs.toFixed(3)}, ${(whole.withinTol * 100).toFixed(2)}% within 8`);
   const ours = writePNG(path.join(OUT, "scene-best-match.png"), best.frame, 360, 240);
