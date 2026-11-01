@@ -81,6 +81,19 @@ docs: explain the optional sound package
 
 In the PR body, say what changed and how you checked it.
 
+## Contributors
+
+The README credits contributors with [all-contributors](https://allcontributors.org).
+To add someone, comment on their pull request or issue:
+
+```text
+@all-contributors please add @username for code
+```
+
+Pick the contribution type from the
+[emoji key](https://allcontributors.org/docs/en/emoji-key), such as `code`,
+`doc`, `bug`, or `ideas`. The bot opens a pull request that updates the table.
+
 ## Conduct
 
 Be kind and treat people well.

@@ -1,0 +1,38 @@
+{
+  "projectName": "omafire",
+  "projectOwner": "wesleygrimes",
+  "repoType": "github",
+  "repoHost": "https://github.com",
+  "files": [
+    "README.md"
+  ],
+  "imageSize": 100,
+  "commit": false,
+  "commitConvention": "angular",
+  "contributorsPerLine": 7,
+  "linkToUsage": false,
+  "contributors": [
+    {
+      "login": "wesleygrimes",
+      "name": "Wes Grimes",
+      "avatar_url": "https://avatars.githubusercontent.com/u/324308?v=4",
+      "profile": "https://github.com/wesleygrimes",
+      "contributions": [
+        "code",
+        "doc",
+        "maintenance"
+      ]
+    },
+    {
+      "login": "mattwolfgang",
+      "name": "Matthew L. Wolfgang",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1562632?v=4",
+      "profile": "http://www.inmattsmind.com",
+      "contributions": [
+        "code",
+        "doc"
+      ]
+    }
+  ],
+  "commitType": "docs"
+}
