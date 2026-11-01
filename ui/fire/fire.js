@@ -489,90 +489,6 @@ function drawLog(fb, x, y, angle) {
     }
 }
 
-// Centre sample of a rotated rect. Full colour, no edge blend: the fractional
-// scale stamp cannot keep a blended edge opaque without also moving the light
-// pool.
-function fillRectRotatedSolid(fb, tx, ty, cos, sin, rx, ry, rw, rh, c) {
-    var xs = [rx, rx + rw, rx + rw, rx], ys = [ry, ry, ry + rh, ry + rh];
-    var minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9, i;
-    for (i = 0; i < 4; i++) {
-        var px = tx + xs[i] * cos - ys[i] * sin, py = ty + xs[i] * sin + ys[i] * cos;
-        if (px < minX) minX = px; if (px > maxX) maxX = px;
-        if (py < minY) minY = py; if (py > maxY) maxY = py;
-    }
-    var x0 = Math.max(0, Math.floor(minX)), x1 = Math.min(W, Math.ceil(maxX));
-    var y0 = Math.max(0, Math.floor(minY)), y1 = Math.min(H, Math.ceil(maxY));
-    for (var y = y0; y < y1; y++) for (var x = x0; x < x1; x++) {
-        var dx = x + 0.5 - tx, dy = y + 0.5 - ty;
-        var lx = dx * cos + dy * sin, ly = -dx * sin + dy * cos;
-        if (lx >= rx && lx < rx + rw && ly >= ry && ly < ry + rh) {
-            var p = (y * W + x) * 4;
-            fb[p] = c[0]; fb[p + 1] = c[1]; fb[p + 2] = c[2];
-        }
-    }
-}
-
-function paintLogSolid(fb, x, y, angle) {
-    var tx = Math.round(x), ty = Math.round(y);
-    var cos = Math.cos(angle || 0), sin = Math.sin(angle || 0);
-    for (var i = 0; i < LOG_RECTS.length; i++) {
-        var r = LOG_RECTS[i];
-        if (!angle) fillRect(fb, tx + r[0], ty + r[1], r[2], r[3], r[4], 1);
-        else fillRectRotatedSolid(fb, tx, ty, cos, sin, r[0], r[1], r[2], r[3], r[4]);
-    }
-}
-
-// Repaint a flying or dragged log opaquely over the antialiased one render()
-// just drew. Used only when the screen and window scales disagree; render()
-// itself stays on the coverage blend so the 1:1 frames do not move.
-function solidifyLog(fb, s) {
-    if (!s) return;
-    if (s.flight) {
-        var pr = Math.min(1, s.flight.age / FLIGHT_SECONDS), ease = 1 - (1 - pr) * (1 - pr);
-        paintLogSolid(fb,
-            s.flight.fromX + (BASE_X - s.flight.fromX) * ease,
-            s.flight.fromY + (BASE_Y - s.flight.fromY) * ease - Math.sin(pr * Math.PI) * 45,
-            pr * 0.4);
-    }
-    if (s.drag) paintLogSolid(fb, s.drag.x, s.drag.y, -0.22);
-}
-
-function isSolidLog(r, g, b) {
-    for (var i = 0; i < LOG_RECTS.length; i++) {
-        var c = LOG_RECTS[i][4];
-        if (c[0] === r && c[1] === g && c[2] === b) return true;
-    }
-    return false;
-}
-
-// Buffer index whose cover-shift lands on p, or -1 when p is between samples.
-function coverIndex(p, cover, limit) {
-    var n = Math.round(p / cover), k;
-    for (k = n - 2; k <= n + 2; k++) {
-        if (k >= 0 && k < limit && ((k * cover + 0.5) | 0) === p) return k;
-    }
-    return -1;
-}
-
-// Every exact log colour that differs from the art replaces the campsite, so
-// the display shifts it by `cover` whether the step off the art is large or
-// small. Store the whole log back by that one factor. The light pool is not
-// a log colour and stays with the campsite.
-function stampSolidLogs(dst, fb, art, cover) {
-    var y, x, si, r, g, b, dx, dy, j;
-    for (y = 0; y < H; y++) for (x = 0; x < W; x++) {
-        si = (y * W + x) * 4;
-        r = fb[si]; g = fb[si + 1]; b = fb[si + 2];
-        if (!isSolidLog(r, g, b)) continue;
-        if (r === art[si] && g === art[si + 1] && b === art[si + 2]) continue;
-        dx = coverIndex(x, cover, W);
-        dy = coverIndex(y, cover, H);
-        if (dx < 0 || dy < 0) continue;
-        j = (dy * W + dx) * 4;
-        dst[j] = r; dst[j + 1] = g; dst[j + 2] = b;
-    }
-}
-
 // strokeRect with lineWidth 1, setLineDash([3, 3]), butt caps: the dash
 // pattern runs continuously around the perimeter from the top-left corner.
 function strokeDashedRect(fb, x, y, w, h, c, a) {
@@ -896,7 +812,6 @@ if (typeof module !== "undefined" && module.exports) {
         update: update, advanceAnalytic: advanceAnalytic, tick: tick, status: status, statusIndex: statusIndex,
         serialize: serialize, restore: restore,
         roundByte: roundByte, createFrame: createFrame, prepareBackground: prepareBackground, render: render, drawLog: drawLog,
-        solidifyLog: solidifyLog, stampSolidLogs: stampSolidLogs, isSolidLog: isSolidLog,
         cachedBackground: cachedBackground, cacheBackground: cacheBackground, drawMoonlight: drawMoonlight,
         createRects: createRects, RECT_MAX: RECT_MAX,
         iconCells: iconCells, ICON_SIZE: ICON_SIZE, ICON_COLORS: ICON_COLORS

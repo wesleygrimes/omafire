@@ -32,24 +32,17 @@ Item {
     // 360 x 240 logical, and the decoder canvas is sized in device pixels
     // (720 x 480 divided by the ratio) and draws the art unscaled, so
     // getImageData returns it 1:1 (checked against ImageMagick's decode).
-    // Screen stays a whole number on a fractional Wayland scale (2 at 1.6 and
-    // at 1.33) while the layer-shell window uses the fractional scale.
-    readonly property real screenDpr: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
-    readonly property real windowDpr: {
-        var win = canvas.Window.window;
-        return win && win.devicePixelRatio > 0 ? win.devicePixelRatio : screenDpr;
-    }
-    // The decoder's backing store follows the window. Sizing it from Screen
-    // leaves the art in the top-left of the scene. A new layer-shell window
-    // also passes through other ratios before it settles, so art decoded at
-    // a stale one is decoded again.
-    readonly property real dpr: windowDpr
+    // Ask the window, not Screen: with fractional scaling Screen reports the
+    // output's integer scale (2 at 1.33x and at 1.6x) while the window really
+    // uses the fractional scale. Sizing the decoder from Screen leaves the
+    // art in the top-left of the scene.
+    readonly property real dpr: Window.window && Window.window.devicePixelRatio > 0
+        ? Window.window.devicePixelRatio
+        : (Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1)
+    // A new layer-shell window passes through other ratios (2, then 1, then
+    // 1.33) before it settles, so art decoded at a stale one is decoded again.
     property real decodedDpr: 0
     onDprChanged: if (decodedDpr > 0 && decodedDpr !== dpr) { decodedDpr = 0; canvas.bg = null; }
-    // The canvas texture is shown at window/screen of its item, top-left.
-    // Scale it back up from the top-left; the item clips. The two ratios
-    // match under QT_SCALE_FACTOR, so the 1x and 2x grabs are unchanged.
-    readonly property real bufferCover: (screenDpr > 0 && windowDpr > 0 && Math.abs(screenDpr - windowDpr) >= 0.02) ? screenDpr / windowDpr : 1
 
     // Decodes the approved art once at its own 720 x 480 size; fire.js
     // samples it down to 360 x 240 exactly like the reference drawImage.
@@ -94,12 +87,7 @@ Item {
         height: Fire.H
         smooth: false
         antialiasing: false
-        transform: Scale {
-            origin.x: 0
-            origin.y: 0
-            xScale: root.width / Fire.W * root.bufferCover
-            yScale: root.height / Fire.H * root.bufferCover
-        }
+        transform: Scale { xScale: root.width / Fire.W; yScale: root.height / Fire.H }
 
         property var bg: root.reuseArt ? Fire.cachedBackground() : null
         property var fb: Fire.createFrame()
@@ -142,7 +130,6 @@ Item {
         Connections {
             target: root
             function onDprChanged() { canvas.repaintAll(); }
-            function onBufferCoverChanged() { canvas.repaintAll(); }
             function onVisibleChanged() { canvas.repaintAll(); }
             function onRunningChanged() { if (root.running) canvas.repaintAll(); }
         }
@@ -236,56 +223,10 @@ Item {
 
         // The whole frame in one put, through `out`.
         function putAll(ctx) {
-            var d = out.data, f = fb32, n = Fire.W * Fire.H, v, i, j;
-            var cover = root.bufferCover;
-            if (cover === 1) {
-                for (i = 0, j = 0; i < n; i++, j += 4) {
-                    v = f[i];
-                    d[j] = v & 255; d[j + 1] = (v >>> 8) & 255; d[j + 2] = (v >>> 16) & 255;
-                }
-            } else {
-                // Screen DPR and the layer-shell window DPR disagree, so a
-                // pixel that replaces the campsite is shown `cover` times
-                // farther from the origin than the art (2/1.6 = 1.25 here).
-                // The art stays 1:1. Sample the opaque hearth pixels back by
-                // that factor so the flames land on the ring. Stars and the
-                // treeline are outside this box and stay with the art.
-                // The flying log is repainted opaque first: its rotated edges
-                // are coverage blends, and the dark body sits too close to the
-                // trees for this cutoff, so the campsite was showing through.
-                Fire.solidifyLog(fb, root.fire.sim);
-                var src = bg;
-                var x0 = 70, x1 = 300, y0 = 90, y1 = Fire.H, W = Fire.W;
-                for (i = 0, j = 0; i < n; i++, j += 4) {
-                    d[j] = src[j]; d[j + 1] = src[j + 1]; d[j + 2] = src[j + 2];
-                }
-                for (var dy = y0; dy < y1; dy++) {
-                    var sy = (dy * cover + 0.5) | 0;
-                    if (sy < 0 || sy >= y1) continue;
-                    for (var dx = x0; dx < x1; dx++) {
-                        var sx = (dx * cover + 0.5) | 0;
-                        if (sx < x0 || sx >= x1) continue;
-                        i = sy * W + sx;
-                        v = f[i];
-                        var si = i * 4;
-                        var r = v & 255, g = (v >>> 8) & 255, b = (v >>> 16) & 255;
-                        var dr = r - src[si]; if (dr < 0) dr = -dr;
-                        var dg = g - src[si + 1]; if (dg < 0) dg = -dg;
-                        var db = b - src[si + 2]; if (db < 0) db = -db;
-                        // The pool only nudges the art (well under 96). Moving
-                        // those nudges paints the near logs black. Flames,
-                        // embers and sparks replace the pixel; sample those
-                        // back by `cover` so they land on the ring.
-                        if (dr + dg + db < 96) continue;
-                        j = (dy * W + dx) * 4;
-                        d[j] = r; d[j + 1] = g; d[j + 2] = b;
-                    }
-                }
-                // The whole log is a replacement, dark body included, inside the
-                // hearth box and out on the woodpile where the throw starts.
-                // One factor for every log pixel. The light pool is not a log
-                // colour and stays with the campsite.
-                Fire.stampSolidLogs(d, fb, src, cover);
+            var d = out.data, f = fb32, n = Fire.W * Fire.H, v;
+            for (var i = 0, j = 0; i < n; i++, j += 4) {
+                v = f[i];
+                d[j] = v & 255; d[j + 1] = (v >>> 8) & 255; d[j + 2] = (v >>> 16) & 255;
             }
             ctx.putImageData(out, 0, 0, 0, 0, Fire.W, Fire.H);
             shown.set(f);
@@ -311,19 +252,11 @@ Item {
             var cur = flip ? rectsA : rectsB, prev = flip ? rectsB : rectsA;
             flip = !flip;
             Fire.render(fb, root.fire.sim, bg, cur);
-            // While the ratios differ, a pixel that replaces the campsite is
-            // shown `bufferCover` times farther from the origin than the art
-            // (1.25 here, 2 / 1.6), at every panel size. putAll samples those
-            // pixels back. The light pool only nudges the art; moving it
-            // blacks out the near logs, so it stays put. Matched ratios,
-            // including the 1x and 2x grabs, keep the tile path.
-            if (fullLeft > 0 || root.bufferCover !== 1) {
-                if (root.bufferCover === 1) {
-                    // Counts only once the window has presented since the last
-                    // full frame (or when there is no window to ask).
-                    var presented = hostWindow && ("frameSwapped" in hostWindow) ? swaps : frames;
-                    if (presented !== fullAtSwap) { fullLeft--; fullAtSwap = presented; }
-                }
+            if (fullLeft > 0) {
+                // Counts only once the window has presented since the last
+                // full frame (or when there is no window to ask).
+                var presented = hostWindow && ("frameSwapped" in hostWindow) ? swaps : frames;
+                if (presented !== fullAtSwap) { fullLeft--; fullAtSwap = presented; }
                 putAll(ctx);
                 fullFrames++;
             } else {
