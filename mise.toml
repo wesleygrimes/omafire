@@ -3,5 +3,5 @@ description = "Run every OmaFire test (node, Chromium comparison, QML offscreen,
 run = "node --test --test-concurrency=1 'tests/*.test.js'"
 
 [tasks.sound]
-description = "Regenerate the crackle loop and the cricket and frog calls"
-run = "python3 scripts/gen-crackle.py && python3 scripts/gen-night.py"
+description = "Regenerate the fire layers and one-shots, and the cricket and frog calls"
+run = "python3 scripts/gen-fire.py && python3 scripts/gen-night.py"

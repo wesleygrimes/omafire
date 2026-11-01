@@ -57,7 +57,10 @@ QtObject {
         toastVisible = sim.toastShown;
         dragging = !!sim.drag;
         revision++;
-        if (audioObject) audioObject.heat = heat;
+        if (audioObject) {
+            audioObject.heat = heat;
+            audioObject.boost = boost;
+        }
     }
 
     // Wall-clock step. The popup steps particles; a closed popup or a long
@@ -78,8 +81,14 @@ QtObject {
         sync();
     }
 
-    function addLog() { step(); Fire.addLog(sim); sync(); changedByUser(); }
-    function stoke() { step(); Fire.stoke(sim); sync(); changedByUser(); }
+    function addLog() { step(); Fire.addLog(sim); sync(); if (audioObject) audioObject.playLog(); changedByUser(); }
+    function stoke() {
+        step();
+        var stoked = Fire.stoke(sim) === Fire.MESSAGES.stoke;
+        sync();
+        if (stoked && audioObject) audioObject.playStoke();
+        changedByUser();
+    }
     function poke() { step(); Fire.poke(sim); sync(); changedByUser(); }
     function pointerDown(x, y) {
         var r = Fire.pointerDown(sim, x, y);
@@ -91,6 +100,7 @@ QtObject {
     function pointerUp(x, y) {
         var landed = Fire.pointerUp(sim, x, y);
         sync();
+        if (landed && audioObject) audioObject.playLog();
         if (landed) changedByUser();
         return landed;
     }
@@ -118,7 +128,7 @@ QtObject {
         if (sound) { sound = false; return; }
         if (!audioObject) {
             var c = Qt.createComponent(Qt.resolvedUrl("FireAudio.qml"));
-            if (c.status === Component.Ready) audioObject = c.createObject(root, { heat: heat });
+            if (c.status === Component.Ready) audioObject = c.createObject(root, { heat: heat, boost: boost });
             if (!audioObject || audioObject.failed) {
                 if (audioObject) { audioObject.destroy(); audioObject = null; }
                 audioAvailable = false;

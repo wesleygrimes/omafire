@@ -2,15 +2,16 @@
 """Generate the distant cricket and frog calls, assets/cricket.wav,
 assets/peep.wav, and assets/croak.wav.
 
-Each file is one call, mono 16-bit at 22.05 kHz, the same format as
-assets/crackle.wav so Qt's media player resamples it the same way. They are
-meant to be played quietly, one at a time, on the schedule in ui/fire/night.js.
+Each file is one call, mono 16-bit at 22.05 kHz, the same format as the fire
+loops so Qt's media player resamples them the same way. They are played
+quietly, one at a time, on the schedule in ui/fire/night.js.
 
-Distance is mostly the spectrum, not just the gain. A cricket up close is a
-bright 4-5 kHz trill. From across a lake the air takes the top off, so this
-chirp is a short run of damped pulses around 2.4 kHz with a dull reflection
-a few dozen milliseconds later. The peeper is a soft rising whistle. The
-croak is a low double syllable. Seed 5919, so the files regenerate byte for
+Each call sits in a small outdoor room (a Schroeder reverb: four damped
+combs and two allpasses), so it sounds off in the trees rather than in your
+ear. The cricket is four short syllables near 4.4 kHz, falling slightly. The
+peeper is a soft up-slur near 2.7-3.1 kHz. The croak is a green frog's low
+"gunk", twice: a jittered pulse train through throat resonances (210, 480,
+1050 Hz) instead of a sine. Fixed seeds, so the files regenerate byte for
 byte.
 
     python3 scripts/gen-night.py [directory]
@@ -23,132 +24,140 @@ import wave
 from pathlib import Path
 
 RATE = 22050
-SEED = 5919
 
 
-def lowpass(samples, cutoff, rate, q=math.sqrt(0.5)):
-    w0 = 2 * math.pi * cutoff / rate
+def biquad(samples, kind, f, q=0.7071, rate=RATE):
+    w0 = 2 * math.pi * f / rate
     alpha = math.sin(w0) / (2 * q)
-    cos = math.cos(w0)
-    b0, b1, b2 = (1 - cos) / 2, 1 - cos, (1 - cos) / 2
-    a0, a1, a2 = 1 + alpha, -2 * cos, 1 - alpha
+    c = math.cos(w0)
+    if kind == "lp":
+        b0, b1, b2 = (1 - c) / 2, 1 - c, (1 - c) / 2
+    elif kind == "hp":
+        b0, b1, b2 = (1 + c) / 2, -(1 + c), (1 + c) / 2
+    else:  # band-pass, 0 dB peak
+        b0, b1, b2 = alpha, 0.0, -alpha
+    a0, a1, a2 = 1 + alpha, -2 * c, 1 - alpha
     b0, b1, b2, a1, a2 = b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0
-    out, x1, x2, y1, y2 = [], 0.0, 0.0, 0.0, 0.0
-    for x in samples:
+    out = [0.0] * len(samples)
+    x1 = x2 = y1 = y2 = 0.0
+    for i, x in enumerate(samples):
         y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2
         x2, x1, y2, y1 = x1, x, y1, y
-        out.append(y)
+        out[i] = y
     return out
 
 
-def silence(n):
-    return [0.0] * n
-
-
-def add_at(buf, start, samples, gain):
-    for i, s in enumerate(samples):
-        j = start + i
-        if 0 <= j < len(buf):
-            buf[j] += s * gain
-
-
-def reflect(buf, delay_s, gain, cutoff):
-    # A dull copy of the call, as if it bounced off the far trees.
-    delayed = silence(len(buf))
-    shift = int(RATE * delay_s)
-    for i, s in enumerate(buf):
-        j = i + shift
-        if j < len(delayed):
-            delayed[j] = s
-    delayed = lowpass(delayed, cutoff, RATE)
-    for i in range(len(buf)):
-        buf[i] += delayed[i] * gain
-
-
-def fade_ends(buf, fade_in, fade_out):
-    n = len(buf)
-    for i in range(min(fade_in, n)):
-        buf[i] *= i / fade_in
-    for i in range(min(fade_out, n)):
-        buf[n - 1 - i] *= i / fade_out
+def reverb(dry, wet=0.3, size=1.0, damp=3200, tail=0.6):
+    """Small Schroeder room: open air, a few trees. Returns dry + wet."""
+    n = len(dry) + int(RATE * tail)
+    x = dry + [0.0] * (n - len(dry))
+    acc = [0.0] * n
+    lp_a = math.exp(-2 * math.pi * damp / RATE)
+    for ms, fb in ((29.7, 0.77), (37.1, 0.75), (41.1, 0.73), (43.7, 0.71)):
+        d = int(RATE * ms * size / 1000)
+        buf = [0.0] * n
+        lp = 0.0
+        for i in range(n):
+            back = buf[i - d] if i >= d else 0.0
+            lp = (1 - lp_a) * back + lp_a * lp
+            buf[i] = x[i] + lp * fb
+            acc[i] += back
+    for ms, g in ((5.0, 0.7), (1.7, 0.7)):
+        d = int(RATE * ms / 1000)
+        out = [0.0] * n
+        for i in range(n):
+            xd = acc[i - d] if i >= d else 0.0
+            yd = out[i - d] if i >= d else 0.0
+            out[i] = -g * acc[i] + xd + g * yd
+        acc = out
+    acc = biquad(acc, "lp", damp)
+    return [x[i] + acc[i] * wet * 0.25 for i in range(n)]
 
 
 def normalize(buf, peak):
     m = max(abs(s) for s in buf) or 1.0
-    g = peak / m
-    for i in range(len(buf)):
-        buf[i] *= g
+    return [s * peak / m for s in buf]
 
 
-def cricket():
-    # Four tooth-strikes. Each is a damped sine that falls a little in pitch,
-    # the way a real chirp does as the wing slows.
-    pulses = []
-    spacing = int(RATE * 0.016)
-    pulse_n = int(RATE * 0.014)
-    for p in range(4):
-        f0 = 2480 - p * 40
-        for i in range(pulse_n):
-            t = i / RATE
-            env = math.exp(-t * 160) * (1 - math.exp(-t * 900))
-            pulses.append(math.sin(2 * math.pi * f0 * t) * env)
-        if p < 3:
-            pulses.extend(silence(spacing - pulse_n))
-    pulses = lowpass(pulses, 2100, RATE)
-    buf = silence(int(RATE * 0.16))
-    add_at(buf, int(RATE * 0.008), pulses, 1)
-    reflect(buf, 0.046, 0.22, 1200)
-    fade_ends(buf, int(RATE * 0.004), int(RATE * 0.012))
-    normalize(buf, 0.42)
+def fade(buf, a, b):
+    n = len(buf)
+    for i in range(min(a, n)):
+        buf[i] *= i / a
+    for i in range(min(b, n)):
+        buf[n - 1 - i] *= i / b
     return buf
 
 
-def peep():
-    # A spring peeper across the water: one rising whistle, no rasp.
-    n = int(RATE * 0.15)
-    buf = []
-    phase = 0.0
+def cricket(seed=1):
+    rng = random.Random(seed)
+    buf = [0.0] * int(RATE * 0.16)
+    start = int(RATE * 0.01)
+    for syl in range(4):
+        dur = int(RATE * 0.017)
+        f0, f1 = 4450 - syl * 15, 4300 - syl * 15
+        ph = 0.0
+        for k in range(dur):
+            x = k / dur
+            env = math.sin(math.pi * x ** 0.8) ** 2
+            f = f0 + (f1 - f0) * x
+            ph += 2 * math.pi * f / RATE
+            s = (math.sin(ph) + 0.06 * math.sin(2 * ph)) * env
+            buf[start + k] += s * (0.85 + 0.15 * rng.random())
+        start += int(RATE * 0.031)
+    buf = biquad(buf, "lp", 6500)
+    buf = reverb(buf, wet=0.55, size=1.1, damp=4200, tail=0.45)
+    return normalize(fade(buf, 40, 400), 0.42)
+
+
+def peep(seed=2):
+    n = int(RATE * 0.13)
+    buf = [0.0] * int(RATE * 0.02)
+    ph = 0.0
     for i in range(n):
-        t = i / n
-        f = 1500 + 900 * t
-        phase += 2 * math.pi * f / RATE
-        env = math.sin(math.pi * t) ** 1.35
-        buf.append(math.sin(phase) * env)
-    buf = lowpass(buf, 1900, RATE)
-    buf = silence(int(RATE * 0.02)) + buf + silence(int(RATE * 0.06))
-    reflect(buf, 0.055, 0.2, 1100)
-    fade_ends(buf, int(RATE * 0.006), int(RATE * 0.015))
-    normalize(buf, 0.40)
-    return buf
+        x = i / n
+        f = 2650 + 420 * (1 - (1 - x) ** 2)
+        ph += 2 * math.pi * f / RATE
+        env = (min(1, x / 0.35) ** 1.5) * (1 - max(0, (x - 0.7) / 0.3)) ** 1.2
+        buf.append(math.sin(ph) * env)
+    buf = biquad(buf, "lp", 5000)
+    buf = reverb(buf, wet=0.6, size=1.2, damp=3800, tail=0.5)
+    return normalize(fade(buf, 40, 500), 0.40)
 
 
-def croak():
-    # A low two-note croak. The second syllable is shorter and lower.
-    rng = random.Random(SEED)
-    buf = silence(int(RATE * 0.28))
+def croak(seed=3):
+    """A green frog's low 'gunk', twice: a jittered pulse train through
+    throat resonances, not a sine."""
+    rng = random.Random(seed)
+    buf = [0.0] * int(RATE * 0.5)
 
-    def syllable(start, dur, f_low, f_body):
+    def syllable(start, dur, f0, f1, amp):
         n = int(RATE * dur)
-        phase_l = 0.0
-        phase_b = 0.0
+        src = [0.0] * n
+        t = 0.0
+        while True:
+            i = int(t * RATE)
+            if i >= n:
+                break
+            x = i / n
+            env = min(1, x / 0.12) * (1 - x) ** 1.6
+            src[i] += env * (0.8 + 0.4 * rng.random())
+            f = f0 + (f1 - f0) * x
+            t += (1 / f) * (1 + rng.uniform(-0.04, 0.04))
+        voiced = [0.0] * n
+        for f, q, g in ((210, 3.0, 1.0), (480, 4.0, 0.55), (1050, 5.0, 0.18)):
+            r = biquad(src, "bp", f, q)
+            for i in range(n):
+                voiced[i] += r[i] * g
         for i in range(n):
-            t = i / n
-            env = math.sin(math.pi * min(1, t / 0.35)) * math.exp(-t * 3.2)
-            phase_l += 2 * math.pi * f_low / RATE
-            phase_b += 2 * math.pi * f_body / RATE
-            rasp = (rng.random() * 2 - 1) * 0.08 * env
-            s = (math.sin(phase_l) * 0.65 + math.sin(phase_b) * 0.35) * env + rasp
             j = start + i
             if j < len(buf):
-                buf[j] += s
+                buf[j] += voiced[i] * amp
 
-    syllable(int(RATE * 0.02), 0.09, 165, 520)
-    syllable(int(RATE * 0.12), 0.07, 140, 440)
-    smoothed = lowpass(buf, 780, RATE)
-    reflect(smoothed, 0.062, 0.28, 500)
-    fade_ends(smoothed, int(RATE * 0.005), int(RATE * 0.02))
-    normalize(smoothed, 0.40)
-    return smoothed
+    syllable(int(RATE * 0.02), 0.16, 118, 104, 1.0)
+    syllable(int(RATE * 0.24), 0.12, 108, 96, 0.7)
+    buf = biquad(buf, "lp", 1800)
+    buf = reverb(buf, wet=0.5, size=1.3, damp=1600, tail=0.6)
+    return normalize(fade(buf, 60, 900), 0.40)
 
 
 def write(path, samples):
