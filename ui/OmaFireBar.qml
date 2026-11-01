@@ -15,6 +15,10 @@ BarWidget {
     readonly property var session: FireSession
     readonly property bool opened: session.owner === root
     property bool popoutSwitchClosing: false
+    // True from the first open on, so the popup is only built if it's used.
+    property bool popupWanted: false
+    readonly property Item popup: popupLoader.item
+    onOpenedChanged: if (opened) popupWanted = true
 
     function open() { popoutSwitchClosing = false; session.openOn(root); }
     function close() { if (session.owner === root) session.closePopup(); }
@@ -62,12 +66,22 @@ BarWidget {
         borderSpec: Border.none()
         contentWidth: 390
         contentHeight: 381
-        focusTarget: panel.loadedContent
-        content: Component {
-            FirePopup {
-                fire: root.session.fire
-                running: root.opened
-                onCloseRequested: root.close()
+        focusTarget: popupLoader.item
+        // Built on first open and kept, like the host's lazy `content` slot.
+        // That slot is Omarchy 4.5 only and assigning it fails to parse on
+        // 4.0.x, so OmaFire uses the default children both versions have and
+        // does the lazy loading itself.
+        Loader {
+            id: popupLoader
+            anchors.fill: parent
+            focus: true
+            active: root.popupWanted
+            sourceComponent: Component {
+                FirePopup {
+                    fire: root.session.fire
+                    running: root.opened
+                    onCloseRequested: root.close()
+                }
             }
         }
     }

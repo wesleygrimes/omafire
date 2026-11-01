@@ -25,7 +25,8 @@ Singleton {
 
     property FireState fire: FireState {
         open: session.isOpen
-        reducedMotion: Style.reduceMotion
+        // Omarchy 4.0.x has no Style.reduceMotion; read it as false there.
+        reducedMotion: Style.reduceMotion === true
     }
 
     function register(widget) {
@@ -88,17 +89,22 @@ Singleton {
     onIsOpenChanged: save()
 
     // ----------------------------------------------------------------------- IPC
-    property ShellIpc ipc: ShellIpc {
-        target: session.ipcTarget
-        function toggle(): void { var w = session.owner || session.preferredWidget(); session.toggleOn(w); }
-        function open(): void { session.openOn(session.preferredWidget()); }
-        function close(): void { session.closePopup(); }
-        function addLog(): void { session.fire.addLog(); }
-        function stoke(): void { session.fire.stoke(); }
-        function poke(): void { session.fire.poke(); }
-        function sound(): void { session.fire.toggleSound(); }
-        function status(): string { return session.fire.statusJson(); }
+    // Omarchy 4.5 has ShellIpc (an IpcHandler omarchy-shell also answers over
+    // the shell's own socket); 4.0.x doesn't, and naming a missing type here
+    // would stop the whole plugin loading. So try FireIpcShell.qml first and
+    // fall back to FireIpcPlain.qml, a bare IpcHandler that `qs ipc` (and
+    // omarchy-shell on 4.0.x) reaches. Both declare the same calls.
+    property QtObject ipc: null
+    readonly property string ipcRoute: ipc ? ipc.route : ""
+
+    function createIpc() {
+        var c = Qt.createComponent("FireIpcShell.qml");
+        if (c.status !== Component.Ready) c = Qt.createComponent("FireIpcPlain.qml");
+        if (c.status !== Component.Ready) { console.warn("OmaFire: no IPC handler:", c.errorString()); return; }
+        ipc = c.createObject(session, { session: session });
     }
+
+    Component.onCompleted: createIpc()
 
     Component.onDestruction: {
         save();

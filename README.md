@@ -52,13 +52,26 @@ o.bind("SUPER + ALT + O", "OmaFire", "omarchy-shell wesleygrimes.omafire toggle"
 
 ## Requirements
 
-- Omarchy 4 with the Quickshell bar. Tested on Omarchy 4.0.0, Quickshell 0.3.2, Qt 6.12, Hyprland 0.57.
+- Omarchy 4.0 or newer with the Quickshell bar. Tested against Omarchy 4.0.6 and the 4.5 dev build, with Quickshell 0.3.2, Qt 6.12, and Hyprland 0.57.
+- On Omarchy 4.0.x, OmaFire ignores the reduce motion setting, since 4.0.x doesn't have one, and `omarchy-shell` calls go through `qs ipc`, so they're a little slower than on 4.5. Everything else is the same.
 - `qt6-imageformats` to load the WebP artwork.
 - `qt6-multimedia` for the crackle. It's optional. Without it everything else works and the Sound button says sound isn't available.
 
 Install either with `sudo pacman -S qt6-imageformats qt6-multimedia` if they're missing.
 
 No network access, no web view, no background service. It's plain QML and JavaScript running inside the shell you already have.
+
+### If it doesn't show up
+
+Check that it's installed and enabled, then look for OmaFire in the shell log:
+
+```bash
+omarchy-version
+omarchy plugin list | grep -i fire
+quickshell log -p /usr/share/omarchy/shell -n | grep -i -E 'omafire|FireSession|OmaFireBar'
+```
+
+Please open an issue with that output if the fire still isn't in your bar.
 
 ## Remove it
 

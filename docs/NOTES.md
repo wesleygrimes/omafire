@@ -31,7 +31,8 @@ The host-independent components live in `ui/fire/` because a qmldir that declare
 - The bar injects `bar`, `moduleName`, `settings`, `fixedEdge` into the widget (`qs.Ui/BarWidget`).
 - Popup: `qs.Ui/KeyboardPanel` (a full-screen layer-shell PanelWindow, card placed inside). It handles top/bottom/left/right bars, clamps the card to the output with `Style.gapsOut` margins, dismisses on outside click (including other outputs), primes keyboard focus, and coordinates with `bar.requestPopout/releasePopout`. When another popup takes over, the bar calls `owner.closeForPopoutSwitch()`. OmaFire sets `padding: 0`, `borderSpec: Border.none()`, `contentWidth: 390`, `contentHeight: 381`, and draws its own border and square corners over the host card, so the themed card color and corner radius never show.
 - Palette: the default look is the reference's fixed colors, so `Commons.Color` is not used. `Style.reduceMotion` is read for reduced motion.
-- IPC: `ShellIpc` from `qs.Commons` (an `IpcHandler` that `omarchy-shell` can also answer). It lives in the singleton, so there is one handler no matter how many bars exist.
+- IPC: on Omarchy 4.5, `ShellIpc` from `qs.Commons` (an `IpcHandler` that `omarchy-shell` can also answer over the shell's socket), in `ui/FireIpcShell.qml`. 4.0.x has no `ShellIpc`, so `FireSession` creates that file at runtime and falls back to `ui/FireIpcPlain.qml`, a bare `IpcHandler` that `qs ipc` reaches (4.0.x's `omarchy-shell` uses `qs ipc`). Both files hold the same calls. It lives in the singleton, so there is one handler no matter how many bars exist.
+- Omarchy 4.0.x support: QML checks types and property names when it parses a file, so no file the bar loads may name 4.5-only API. The popup is a plain child `Loader` of `KeyboardPanel` (both versions take children; only 4.5 has the lazy `content` slot), and `Style.reduceMotion` (4.5 only) is read as `=== true`. `tests/compat.test.js` guards this.
 - State: `FileView.setText` exists in Quickshell 0.3.2, `atomicWrites` defaults to true, and it creates missing parent directories (checked with a scratch config).
 - `omarchy plugin validate` passes. `omarchy plugin add <url> --enable` is the form used by the comparable omastorm README; I could not run `omarchy plugin --help` in this environment to confirm the flag.
 
@@ -132,13 +133,14 @@ The reference asks for `ui-monospace, SFMono-Regular, Consolas, monospace`. On t
 | `tests/sim.test.js` | timings, actions, hit tests, status table, toast, dt cap, analytic advance, caps, persistence, icon |
 | `tests/package.test.js` | art hash, no symlinks, no machine paths, manifest rules, sound file regenerates |
 | `tests/qml.test.js` | qmltestrunner offscreen at 1x and 2x (`tests/qml/`): real mouse/key events, focus ring after a click (`tst_focus.qml`), geometry, grabs, no warnings; grabbed scene compared with fire.js pixel for pixel; `omarchy plugin validate` |
-| `tests/integration.test.js` | real Quickshell with stand-ins for `qs.Ui`/`qs.Commons`: two bars share one fire, popup moves between bars, IPC, save/restore, corrupt state, long absence |
+| `tests/integration.test.js` | real Quickshell with stand-ins for `qs.Ui`/`qs.Commons`, once per host API (4.0.x and 4.5): two bars share one fire, popup moves between bars, IPC route, save/restore, corrupt state, long absence |
+| `tests/compat.test.js` | no 4.5-only host API at parse time; the two IPC files match |
 | `tests/visual.test.js` | reference popup screenshots at 1x/2x vs the native grabs; side-by-sides in `tests/out/compare-*.png` |
 
 The Chromium, Quickshell and qmltestrunner tests skip when those tools aren't installed. `tests/reference/` holds the prototype script and fragment with the inline image data removed, plus the approved capture.
 
 ## Not verified here
 
-- Running inside the live omarchy-shell bar (installation was left to Wes). The integration test uses stand-ins for `BarWidget`, `BarIconButton`, `KeyboardPanel`, `ShellIpc`, `Style`, `Border`.
+- Running inside the live omarchy-shell bar (installation was left to Wes). The integration test uses stand-ins for `BarWidget`, `BarIconButton`, `KeyboardPanel`, `ShellIpc`, `Style`, `Border`, one set per host API (`tests/integration/hosts/omarchy-4.0` and `omarchy-4.5`).
 - Bottom/side bars, monitor edges, multiple real outputs, hot reload, and suspend on real hardware. The KeyboardPanel code handles these; OmaFire adds nothing that depends on bar position.
 - Audio on real speakers.

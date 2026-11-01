@@ -1,6 +1,8 @@
 // Integration under real Quickshell: runs tests/integration/shell.qml (the
 // real OmaFireBar + FireSession + FileView + IPC, with stand-ins for the
-// host's qs.Ui and qs.Commons) and drives it with `qs ipc`. Needs a Wayland
+// host's qs.Ui and qs.Commons) and drives it with `qs ipc`, once against
+// Omarchy 4.5's host API and once against 4.0.x's (no ShellIpc, no
+// KeyboardPanel content slot, no Style.reduceMotion). Needs a Wayland
 // session; skips without qs or WAYLAND_DISPLAY. Quickshell is always stopped
 // (harness quit, then the timeout wrapper).
 "use strict";
@@ -11,15 +13,24 @@ const path = require("path");
 const { spawn, execFileSync } = require("child_process");
 const { ROOT, OUT } = require("./lib/images");
 
-const DIR = path.join(OUT, "integration");
-const CONFIG = path.join(DIR, "config");
-const STATE = path.join(DIR, "state.json");
+// Each host's stand-ins and the IPC route OmaFire should pick on it.
+const HOSTS = [
+  { name: "omarchy-4.5", route: "shell" },
+  { name: "omarchy-4.0", route: "qs" },
+];
+
+let DIR, CONFIG, STATE;
 
 // Quickshell resolves imports only inside its config directory, so assemble
-// one: the harness and stand-ins plus copies of ui/ and assets/.
-function assemble() {
+// one: the harness, one host's stand-ins, and copies of ui/ and assets/.
+function assemble(host) {
+  DIR = path.join(OUT, "integration", host);
+  CONFIG = path.join(DIR, "config");
+  STATE = path.join(DIR, "state.json");
   fs.rmSync(CONFIG, { recursive: true, force: true });
-  fs.cpSync(path.join(ROOT, "tests", "integration"), CONFIG, { recursive: true });
+  fs.mkdirSync(CONFIG, { recursive: true });
+  fs.copyFileSync(path.join(ROOT, "tests", "integration", "shell.qml"), path.join(CONFIG, "shell.qml"));
+  fs.cpSync(path.join(ROOT, "tests", "integration", "hosts", host), CONFIG, { recursive: true });
   fs.cpSync(path.join(ROOT, "ui"), path.join(CONFIG, "ui"), { recursive: true });
   fs.cpSync(path.join(ROOT, "assets"), path.join(CONFIG, "assets"), { recursive: true });
 }
@@ -61,9 +72,8 @@ function qmlProblems(output) {
   return output.split("\n").filter(l => /\b(WARN|ERROR)\b/.test(l) && /qml|\.qml|omafire/i.test(l));
 }
 
-test("bar, session, persistence and IPC under Quickshell", { skip, timeout: 120000 }, async () => {
-  fs.mkdirSync(DIR, { recursive: true });
-  assemble();
+for (const host of HOSTS) test(`bar, session, persistence and IPC under Quickshell on ${host.name}`, { skip, timeout: 120000 }, async () => {
+  assemble(host.name);
   // A save from 100 s ago at full fuel.
   const savedAt = Date.now() - 100000;
   fs.writeFileSync(STATE, JSON.stringify({ version: 1, fuel: 1, heat: 0.9, savedAt }));
@@ -72,6 +82,8 @@ test("bar, session, persistence and IPC under Quickshell", { skip, timeout: 1200
   try {
     assert.equal(ipc("omafire-harness", "widgets"), "2", "two bars registered");
     assert.equal(ipc("omafire-harness", "sameFire"), "true", "one fire shared by both bars");
+    assert.equal(ipc("omafire-harness", "ipcRoute"), host.route, `IPC through the ${host.route} route on ${host.name}`);
+    assert.equal(ipc("omafire-harness", "popupBuilt"), "false", "popup not built until first open");
 
     let st = JSON.parse(ipc("wesleygrimes.omafire", "status"));
     assert.ok(Math.abs(st.fuel - (1 - 100 * 0.00125)) < 0.01, `restored fuel advanced by the 100 s away (${st.fuel})`);
@@ -82,6 +94,7 @@ test("bar, session, persistence and IPC under Quickshell", { skip, timeout: 1200
     ipc("omafire-harness", "press", 0);
     assert.equal(ipc("omafire-harness", "openOn"), "A");
     assert.equal(ipc("omafire-harness", "rendering"), "true", "scene runs while open");
+    assert.equal(ipc("omafire-harness", "popupSize"), "390x381", "popup fills the panel card");
     ipc("omafire-harness", "press", 1);
     assert.equal(ipc("omafire-harness", "openOn"), "B", "opening on another monitor moves the popup");
     ipc("wesleygrimes.omafire", "close");

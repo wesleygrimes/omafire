@@ -1,7 +1,8 @@
 import QtQuick
 
-// Stand-in for the host's qs.Ui KeyboardPanel: same properties, lazy content
-// built on first open and kept, no window.
+// Stand-in for Omarchy 4.5's qs.Ui KeyboardPanel: same properties, plain
+// children (default property contentItem) and the lazy `content` slot built
+// on first open and kept, no window.
 Item {
     id: root
     required property Item anchorItem
@@ -13,15 +14,21 @@ Item {
     property int contentWidth: 0
     property int contentHeight: 0
     property Item focusTarget: null
+    default property alias contentItem: holder.children
     property Component content: null
     property bool contentRequested: false
     readonly property Item loadedContent: loader.item
     onOpenChanged: if (open) contentRequested = true
     width: contentWidth
     height: contentHeight
-    Loader {
-        id: loader
-        active: !!root.content && (root.open || root.contentRequested)
-        sourceComponent: root.content
+    Item {
+        id: holder
+        anchors.fill: parent
+        Loader {
+            id: loader
+            anchors.fill: parent
+            active: !!root.content && (root.open || root.contentRequested)
+            sourceComponent: root.content
+        }
     }
 }
