@@ -62,23 +62,39 @@ test("manifest matches the host registry's rules", () => {
   assert.ok(fs.existsSync(path.join(ROOT, "preview.png")), "marketplace preview");
 });
 
-test("crackle loop is small, mono, and regenerates byte for byte", () => {
-  const wav = fs.readFileSync(path.join(ROOT, "assets", "crackle.wav"));
-  assert.equal(wav.toString("ascii", 0, 4), "RIFF");
-  assert.equal(wav.readUInt16LE(22), 1, "mono");
-  assert.equal(wav.readUInt32LE(24), 22050);
-  assert.equal(wav.readUInt16LE(34), 16);
-  assert.ok(wav.length < 300 * 1024);
+test("fire sounds are mono, seamless where they loop, and regenerate byte for byte", () => {
   const { execFileSync } = require("child_process");
-  const tmp = path.join(ROOT, "tests", "out", "crackle-regen.wav");
-  fs.mkdirSync(path.dirname(tmp), { recursive: true });
-  execFileSync("python3", [path.join(ROOT, "scripts", "gen-crackle.py"), tmp], { stdio: "ignore" });
-  assert.ok(fs.readFileSync(tmp).equals(wav), "scripts/gen-crackle.py reproduces assets/crackle.wav");
-  // Seamless: the last sample flows into the first like neighbouring samples do.
-  const n = (wav.length - 44) / 2, s = i => wav.readInt16LE(44 + i * 2);
-  let maxStep = 0;
-  for (let i = 1; i < n; i++) maxStep = Math.max(maxStep, Math.abs(s(i) - s(i - 1)));
-  assert.ok(Math.abs(s(0) - s(n - 1)) <= maxStep, "loop seam is no bigger than any step inside the loop");
+  const tmp = path.join(ROOT, "tests", "out", "fire-regen");
+  fs.mkdirSync(tmp, { recursive: true });
+  execFileSync("python3", [path.join(ROOT, "scripts", "gen-fire.py"), tmp], { stdio: "ignore" });
+  let total = 0;
+  const loops = ["fire-embers.wav", "fire-crackle.wav", "fire-roar.wav"];
+  for (const name of [...loops, "fire-log.wav", "fire-stoke.wav"]) {
+    const wav = fs.readFileSync(path.join(ROOT, "assets", name));
+    total += wav.length;
+    assert.equal(wav.toString("ascii", 0, 4), "RIFF", name);
+    assert.equal(wav.readUInt16LE(22), 1, `${name} mono`);
+    assert.equal(wav.readUInt32LE(24), 22050, name);
+    assert.equal(wav.readUInt16LE(34), 16, name);
+    assert.ok(fs.readFileSync(path.join(tmp, name)).equals(wav), `scripts/gen-fire.py reproduces assets/${name}`);
+    const n = (wav.length - 44) / 2, s = i => wav.readInt16LE(44 + i * 2);
+    let peak = 0, maxStep = 0;
+    for (let i = 0; i < n; i++) {
+      peak = Math.max(peak, Math.abs(s(i)));
+      if (i > 0) maxStep = Math.max(maxStep, Math.abs(s(i) - s(i - 1)));
+    }
+    assert.ok(peak < 26000, `${name} peak ${peak} leaves headroom`);
+    if (loops.includes(name)) {
+      // Seamless: the last sample flows into the first like neighbouring samples do.
+      assert.ok(Math.abs(s(0) - s(n - 1)) <= maxStep, `${name} loop seam is no bigger than any step inside it`);
+    } else {
+      assert.equal(s(n - 1), 0, `${name} ends in silence`);
+    }
+  }
+  // Three loops of different lengths, so the mix doesn't repeat audibly.
+  const lengths = loops.map(name => fs.statSync(path.join(ROOT, "assets", name)).size);
+  assert.equal(new Set(lengths).size, 3);
+  assert.ok(total < 1600 * 1024, `fire sounds total ${Math.round(total / 1024)} KiB`);
 });
 
 test("night calls are short, quiet, and regenerate byte for byte", () => {
@@ -93,7 +109,7 @@ test("night calls are short, quiet, and regenerate byte for byte", () => {
     assert.equal(wav.readUInt32LE(24), 22050, name);
     assert.equal(wav.readUInt16LE(34), 16, name);
     const samples = (wav.length - 44) / 2;
-    assert.ok(samples / 22050 < 0.4, `${name} is one call, not a loop`);
+    assert.ok(samples / 22050 < 1.5, `${name} is one call with its reverb tail, not a loop`);
     assert.ok(samples / 22050 > 0.08, `${name} is long enough to read as a call`);
     let peak = 0;
     for (let i = 0; i < samples; i++) peak = Math.max(peak, Math.abs(wav.readInt16LE(44 + i * 2)));

@@ -12,14 +12,17 @@ ui/qmldir                singleton FireSession, OmaFireBar
 ui/fire/                 plain QtQuick, no qs.* imports (renders standalone)
   fire.js                simulation + software renderer (.pragma library, node-loadable)
   panel.js               popup width, 3:2 height, corner-drag projection
+  sound.js               fire layer gains from heat and boost
+  night.js               cricket and frog scheduling
   FireState.qml          bindable wrapper around fire.js state, timers, sound toggle
   FirePopup.qml          header, scene, footer, keys
   FireScene.qml          Canvas, pointer input, toast
   FireButton.qml         footer button
   FireIcon.qml           12 x 12 bar campfire
   FireAudio.qml          QtMultimedia, created on first Sound press only
-assets/                  campsite-approved.webp (unchanged), crackle.wav (generated)
-scripts/gen-crackle.py   deterministic sound loop generator
+assets/                  campsite-approved.webp (unchanged), fire-*.wav and night calls (generated)
+scripts/gen-fire.py      fire layers and one-shots (deterministic)
+scripts/gen-night.py     cricket and frog calls (deterministic)
 scripts/measure.js       CPU/RSS measurement in a live Wayland session
 tests/                   see "Tests"
 ```
@@ -101,13 +104,23 @@ RSS is about 480 MB for the whole shell, not OmaFire's share.
 
 ## Sound
 
-`scripts/gen-crackle.py` follows the reference's Web Audio graph: brown noise (`(b + white * 0.035) / 1.02`, x4) through an RBJ 950 Hz lowpass, plus crackles (probability 0.00015 per sample, 90-790 samples, `(1 - k/n)^5` envelope, 0.65), mixed at the reference gains for heat 0.68, 5 s at 22.05 kHz mono 16-bit, with a 0.25 s equal-power crossfade so the loop is seamless. Seed 5919, so the file regenerates byte for byte.
+`scripts/gen-fire.py` writes five files, all 22.05 kHz mono 16-bit with fixed seeds, so they regenerate byte for byte:
 
-Playback uses `MediaPlayer` + `AudioOutput`, not `SoundEffect`: SoundEffect refused the 22.05 kHz mono format on PipeWire because it doesn't resample. Volume is `0.22 * (0.1 + heat * 0.6) / 0.508`, faded over 0.3 s. Playing requires sound on and the popup open; closing fades it out and stops the player, unload destroys it. No output device, a missing QtMultimedia, or a player error shows "Sound unavailable." and leaves it off. The sound itself has not been listened to on real speakers.
+- `assets/fire-embers.wav` (6.1 s loop): brown noise lowpassed at 220 Hz with a fast flicker, a few quiet snaps.
+- `assets/fire-crackle.wav` (9.1 s loop): the steady fire. Snaps, short runs of snaps, a rare pop.
+- `assets/fire-roar.wav` (11.7 s loop): a deeper rumble, a soft flame whoosh, more snaps.
+- `assets/fire-log.wav` (2.6 s): a dull knock, a scatter of embers, then crackles thickening as it catches.
+- `assets/fire-stoke.wav` (2.2 s): noise rising through an opening filter, a few sparks.
+
+A snap is a noise burst with a 1.2 ms onset and a 5-25 ms decay, through two broad bands (Q 1.3 and 1.6, about 0.9-1.9 kHz and 2-3.2 kHz) and, for big ones, a low knock band. Broad bands and the soft onset are what keep it from sounding like a pitched drip or like electrical static. Crackles come in flurries: the rate follows a slow random curve raised to the fourth power, so there are calm stretches between bursts. A quiet bed of tiny dark snaps sits under everything so no snap pops out of silence. Each loop is soft-limited, darkened at 5 kHz, and crossfaded over 0.8 s so it is seamless. The loops have different lengths so the mix doesn't repeat audibly.
+
+Playback uses `MediaPlayer` + `AudioOutput`, not `SoundEffect`: SoundEffect refused the 22.05 kHz mono format on PipeWire because it doesn't resample. All three loops play while sound is on, each at `0.5 * gain` from `ui/fire/sound.js`: embers fade in by heat 0.08 and ease back 30% when hot, crackle rises from heat 0.08 to 0.55, roar comes in from 0.6 to 0.95 or with boost (a stoke or a fresh log). Levels ease over 0.6 s; on/off fades over 0.3 s. Adding a log (button, key, or drag) and a successful stoke play their one-shots at 0.2. Playing requires sound on and the popup open; closing fades out and stops the players, unload destroys them. No output device, a missing QtMultimedia, or a player error shows "Sound unavailable." and leaves it off.
+
+Qt Multimedia ignores PipeWire's "Dummy Output" sink, so a machine with no sound hardware (a VM, a headless box reached over remote desktop) has no output and sound is unavailable. A null sink (`pactl load-module module-null-sink`) set as default gives Qt a device.
 
 ## Night sounds
 
-`scripts/gen-night.py` writes three one-shots, same format as the crackle (22.05 kHz mono 16-bit): `assets/cricket.wav` (four damped pulses near 2.4 kHz, lowpassed at 2.1 kHz, a dull reflection at 46 ms), `assets/peep.wav` (a rising whistle, lowpassed at 1.9 kHz), `assets/croak.wav` (two low syllables, lowpassed at 780 Hz). Seed 5919. Playback gain is about 0.04 to 0.06, under the crackle's 0.22, and only while sound is on and the popup is open.
+`scripts/gen-night.py` writes three one-shots, same format as the fire: `assets/cricket.wav` (four 17 ms syllables near 4.4 kHz, falling slightly), `assets/peep.wav` (a soft up-slur from about 2.65 to 3.07 kHz), `assets/croak.wav` (a green frog's low "gunk" twice: a jittered pulse train near 110 Hz through throat resonances at 210, 480 and 1050 Hz). Each goes through a small Schroeder reverb (four damped combs, two allpasses) so it sounds off in the trees. Playback gain is about 0.04 to 0.06, and only while sound is on and the popup is open.
 
 `ui/fire/night.js` schedules them. A cricket phrase is 4 to 7 chirps at one rate between 0.86 and 1.10 seconds, then a rest of at least 14 seconds (sometimes half a minute). About one phrase in a few gets a quieter answering chirp 0.30 to 0.38 seconds after a chirp. The first chirp waits 6 to 9.5 seconds so the fire is heard first. A frog calls on its own clock, first after 22 to 34 seconds, then every 28 seconds or longer, a peep about two thirds of the time and a croak the rest. A quarter of the calls double 1.1 to 1.45 seconds later. A frog that would start on the same instant as a chirp waits a fraction of a second.
 
