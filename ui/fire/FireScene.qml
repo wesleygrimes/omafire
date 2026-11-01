@@ -250,6 +250,10 @@ Item {
                 // The art stays 1:1. Sample the opaque hearth pixels back by
                 // that factor so the flames land on the ring. Stars and the
                 // treeline are outside this box and stay with the art.
+                // The flying log is repainted opaque first: its rotated edges
+                // are coverage blends, and the dark body sits too close to the
+                // trees for this cutoff, so the campsite was showing through.
+                Fire.solidifyLog(fb, root.fire.sim);
                 var src = bg;
                 var x0 = 70, x1 = 300, y0 = 90, y1 = Fire.H, W = Fire.W;
                 for (i = 0, j = 0; i < n; i++, j += 4) {
@@ -277,6 +281,11 @@ Item {
                         d[j] = r; d[j + 1] = g; d[j + 2] = b;
                     }
                 }
+                // The whole log is a replacement, dark body included, inside the
+                // hearth box and out on the woodpile where the throw starts.
+                // One factor for every log pixel. The light pool is not a log
+                // colour and stays with the campsite.
+                Fire.stampSolidLogs(d, fb, src, cover);
             }
             ctx.putImageData(out, 0, 0, 0, 0, Fire.W, Fire.H);
             shown.set(f);
