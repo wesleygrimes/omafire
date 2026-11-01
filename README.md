@@ -4,7 +4,7 @@ A tiny campfire for your Omarchy bar.
 
 Click the flame in the bar and a little campsite opens up. Throw a log on, stoke it, poke the coals, then go back to work and let it burn down on its own. It doesn't track anything, doesn't nag you, and won't tell you how productive you were.
 
-![OmaFire open from the Omarchy bar](docs/screenshots/hero.png)
+![The OmaFire popup with the fire burning and moonlight shimmering on the lake](docs/screenshots/hero.webp)
 
 ```bash
 omarchy plugin add https://github.com/wesleygrimes/omafire --enable
@@ -24,9 +24,7 @@ That's the whole install. The fire is in the right side of your bar.
 
 The bar icon is a little pixel fire that follows along, so you can tell at a glance whether it needs a log. Hover it for the status.
 
-| Bar | Popup |
-| --- | --- |
-| ![The OmaFire icon in the bar, zoomed](docs/screenshots/bar.png) | ![The OmaFire popup at 2x](docs/screenshots/popup.png) |
+![The OmaFire icon in the bar, zoomed](docs/screenshots/bar.png)
 
 ### Keys
 
@@ -94,8 +92,6 @@ Remove a manual install with `omarchy plugin disable wesleygrimes.omafire`, then
 ## How it works
 
 The fire started life as a small browser prototype. OmaFire ports its drawing code into QML: the same noise, palette, sparks, smoke, light, and timing, drawn into a 360 by 240 pixel buffer and scaled up without smoothing so it stays crisp on HiDPI screens. The lake adds gently rippling moonlight and silver-blue glints. The tests check that the fire produces the same pixels as the original, frame for frame, and that the lake animation stays on the water.
-
-![Shimmering moonlight on the lake](docs/screenshots/shimmering-lake.gif)
 
 It only draws while the popup is open, and then only the parts of the picture that changed. With the popup closed the cost is the bar icon, which is about 1% of one core on my VM. With it open it's roughly a fifth of one core, which is about what a small animated campfire should cost you.
 
