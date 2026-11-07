@@ -100,6 +100,11 @@ Item {
             if (fire.audioAvailable) {
                 verify(fire.sound);
                 compare(popup.soundButton.text, "Sound on");
+                grab(popup, "popup-sound-on-" + Screen.devicePixelRatio + "x.png");
+                mouseClick(popup.soundButton);
+                verify(fire.sound);
+                compare(popup.soundButton.text, "Always on");
+                grab(popup, "popup-always-on-" + Screen.devicePixelRatio + "x.png");
                 mouseClick(popup.soundButton);
                 verify(!fire.sound);
             } else {

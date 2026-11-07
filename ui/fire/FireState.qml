@@ -8,8 +8,8 @@ import "fire.js" as Fire
 QtObject {
     id: root
 
-    // Set by the host: whether the popup is showing (particles, 60 Hz
-    // stepping, and sound only run while it is).
+    // Set by the host: whether the popup is showing (particles and 60 Hz
+    // stepping only run while it is).
     property bool open: false
     property bool reducedMotion: false
     // Tests turn this off and step with advance().
@@ -28,7 +28,8 @@ QtObject {
     property string toastText: ""
     property bool toastVisible: false
     property bool dragging: false
-    property bool sound: false
+    property int soundMode: 0 // 0: off, 1: while open, 2: always on
+    readonly property bool sound: soundMode !== 0
     property bool audioAvailable: true
     readonly property string hint: Fire.HINT
 
@@ -118,14 +119,14 @@ QtObject {
     }
 
     function statusJson() {
-        return JSON.stringify({ fuel: sim.fuel, heat: sim.heat, boost: sim.boost, status: Fire.status(sim).label, open: open, sound: sound });
+        return JSON.stringify({ fuel: sim.fuel, heat: sim.heat, boost: sim.boost, status: Fire.status(sim).label, open: open, sound: sound, soundMode: soundMode, audioPlaying: audioPlaying });
     }
 
     // ------------------------------------------------------------------ sound
     // QtMultimedia lives in FireAudio.qml, created on first use, so a missing
     // module only costs the sound: the toast says so and it stays off.
     function toggleSound() {
-        if (sound) { sound = false; return; }
+        if (sound) { soundMode = (soundMode + 1) % 3; return; }
         if (!audioObject) {
             var c = Qt.createComponent(Qt.resolvedUrl("FireAudio.qml"));
             if (c.status === Component.Ready) audioObject = c.createObject(root, { heat: heat, boost: boost });
@@ -138,22 +139,22 @@ QtObject {
             }
             audioObject.failedChanged.connect(function () {
                 if (audioObject && audioObject.failed) {
-                    root.sound = false;
+                    root.soundMode = 0;
                     audioAvailable = false;
                     Fire.toast(sim, Fire.MESSAGES.soundUnavailable);
                     sync();
                 }
             });
         }
-        sound = true;
+        soundMode = 1;
     }
 
-    readonly property bool audioPlaying: sound && open
+    readonly property bool audioPlaying: sound && (open || soundMode === 2)
     onAudioPlayingChanged: if (audioObject) audioObject.playing = audioPlaying
     onSoundChanged: if (audioObject) audioObject.playing = audioPlaying
 
     function shutdown() {
-        sound = false;
+        soundMode = 0;
         if (audioObject) { audioObject.stopNow(); audioObject.destroy(); audioObject = null; }
     }
 

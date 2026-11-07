@@ -44,7 +44,7 @@ function startBout(a) {
     a.boutGain = 0.72 + rand(a) * 0.28;
 }
 
-// dt is a slice of time while sound is on and the popup is open. Returns the
+// dt is a slice of time while sound is playing. Returns the
 // calls that begin in this slice. A slice longer than a quarter second is
 // cut, so a stalled frame can't dump a whole phrase at once.
 function advanceAmbience(a, dt) {

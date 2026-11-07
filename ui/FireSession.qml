@@ -44,6 +44,8 @@ Singleton {
     function unregister(widget) {
         widgets = widgets.filter(function (w) { return w !== widget; });
         if (owner === widget) owner = null;
+        // The singleton survives widget removal, so stop audio after the last one.
+        if (widgets.length === 0) fire.shutdown();
     }
 
     // The widget on the focused output, else the first one.

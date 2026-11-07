@@ -12,17 +12,28 @@ import "ui" as OmaFire
 ShellRoot {
     id: shell
 
-    OmaFire.OmaFireBar { id: barA }
-    OmaFire.OmaFireBar { id: barB }
+    readonly property var barA: loaderA.item
+    readonly property var barB: loaderB.item
+    Loader { id: loaderA; sourceComponent: Component { OmaFire.OmaFireBar {} } }
+    Loader { id: loaderB; sourceComponent: Component { OmaFire.OmaFireBar {} } }
 
     IpcHandler {
         target: "omafire-harness"
         function press(index: int): void { (index === 0 ? barA : barB).children[0].press(); }
         function openOn(): string {
             var s = OmaFire.FireSession;
+            if (!s.owner) return "";
             return s.owner === barA ? "A" : s.owner === barB ? "B" : "";
         }
         function widgets(): int { return OmaFire.FireSession.widgets.length; }
+        function removeBar(index: int): void { (index === 0 ? loaderA : loaderB).active = false; }
+        function restoreBar(index: int): void { (index === 0 ? loaderA : loaderB).active = true; }
+        function audioExists(): bool { return !!OmaFire.FireSession.fire.audioObject; }
+        function muteAudio(): void {
+            var a = OmaFire.FireSession.fire.audioObject;
+            if (!a) return;
+            for (var out of [a.embersOut, a.crackleOut, a.roarOut, a.logOut, a.stokeOut, a.cricketOut, a.peepOut, a.croakOut]) out.muted = true;
+        }
         function sameFire(): bool { return barA.session.fire === barB.session.fire; }
         function popupBuilt(): bool { return !!barA.popup || !!barB.popup; }
         function rendering(): bool {

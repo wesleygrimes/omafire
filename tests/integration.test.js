@@ -72,7 +72,7 @@ function qmlProblems(output) {
   return output.split("\n").filter(l => /\b(WARN|ERROR)\b/.test(l) && /qml|\.qml|omafire/i.test(l));
 }
 
-for (const host of HOSTS) test(`bar, session, persistence and IPC under Quickshell on ${host.name}`, { skip, timeout: 120000 }, async () => {
+for (const host of HOSTS) test(`bar, session, persistence and IPC under Quickshell on ${host.name}`, { skip, timeout: 120000 }, async (t) => {
   assemble(host.name);
   // A save from 100 s ago at full fuel.
   const savedAt = Date.now() - 100000;
@@ -122,6 +122,35 @@ for (const host of HOSTS) test(`bar, session, persistence and IPC under Quickshe
     assert.equal(saved.version, 1);
     assert.ok(Math.abs(saved.fuel - st.fuel) < 0.01, "actions are saved");
     assert.ok(Math.abs(saved.savedAt - Date.now()) < 5000);
+
+    // Create optional audio while closed, then mute the test's outputs.
+    ipc("wesleygrimes.omafire", "sound");
+    st = JSON.parse(ipc("wesleygrimes.omafire", "status"));
+    await t.test("always-on audio stops when the last bar widget unloads", {
+      skip: !st.sound && "QtMultimedia or an audio output is unavailable",
+    }, () => {
+      ipc("omafire-harness", "muteAudio");
+      ipc("wesleygrimes.omafire", "sound");
+      st = JSON.parse(ipc("wesleygrimes.omafire", "status"));
+      assert.equal(st.soundMode, 2);
+      assert.equal(st.audioPlaying, true, "always-on playback is requested with the popup closed");
+      ipc("omafire-harness", "removeBar", 0);
+      assert.equal(ipc("omafire-harness", "widgets"), "1");
+      assert.equal(JSON.parse(ipc("wesleygrimes.omafire", "status")).audioPlaying, true,
+        "removing one monitor preserves the playback request on the other");
+      assert.equal(ipc("omafire-harness", "audioExists"), "true",
+        "the remaining widget keeps its audio object");
+      ipc("omafire-harness", "removeBar", 1);
+      assert.equal(ipc("omafire-harness", "widgets"), "0");
+      st = JSON.parse(ipc("wesleygrimes.omafire", "status"));
+      assert.equal(st.soundMode, 0, "last widget removal resets sound to off");
+      assert.equal(st.audioPlaying, false);
+      assert.equal(ipc("omafire-harness", "audioExists"), "false", "audio players are released");
+      ipc("omafire-harness", "restoreBar", 1);
+      assert.equal(ipc("omafire-harness", "widgets"), "1");
+      assert.equal(JSON.parse(ipc("wesleygrimes.omafire", "status")).sound, false,
+        "re-enabling stays muted until explicitly turned on");
+    });
   } finally {
     await qs.stop();
   }
