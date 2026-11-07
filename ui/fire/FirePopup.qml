@@ -7,7 +7,7 @@ import "panel.js" as Panel
 // panelWidth is the one size the host saves. Leave it at the default and the
 // popup is the reference 390 x 381.
 //
-// Keys: A adds a log, S stokes, M toggles sound, Escape asks to close, Tab
+// Keys: A adds a log, S stokes, M cycles sound modes, Escape asks to close, Tab
 // moves between the buttons (Space/Enter press them).
 FocusScope {
     id: root
@@ -175,7 +175,7 @@ FocusScope {
                 id: soundButton
                 objectName: "sound"
                 width: actions.cell
-                text: root.fire.sound ? "Sound on" : "Sound off"
+                text: root.fire.soundMode === 2 ? "Always on" : root.fire.sound ? "Sound on" : "Sound off"
                 pressedLook: root.fire.sound
                 fontFamily: root.fontFamily
                 showFocusRing: root.keyboardFocusVisible

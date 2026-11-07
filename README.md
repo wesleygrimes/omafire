@@ -19,7 +19,7 @@ That's the whole install. The fire is in the right side of your bar.
 - **Add a log.** Click **+ Add log**, or drag one from the woodpile at the lower left and drop it on the fire. One log is about three more minutes of fire.
 - **Stoke it.** **Stoke** makes it flare up for a bit. It doesn't add wood, so stoking an empty fire pit just gets you a polite note.
 - **Poke the coals.** Click the coals for a shower of sparks. Very satisfying, no practical value.
-- **Listen to it.** **Sound on** plays the fire. It follows the fire: a low fire is soft embers, a steady one crackles, a hot or stoked one roars, and adding a log or stoking has its own sound. It starts off every time and stops when the popup closes, because nobody wants a surprise fire noise in a meeting. With the sound on, crickets chirp in short phrases from off in the trees, and a frog calls now and then. Both stay soft, as if they were across the water.
+- **Listen to it.** **Sound on** plays the fire. It follows the fire: a low fire is soft embers, a steady one crackles, a hot or stoked one roars, and adding a log or stoking has its own sound. Cycle the sound button through **Sound off**, **Sound on** (while the popup is open), and **Always on** (including while closed). It starts off after every shell restart. With the sound on, crickets chirp in short phrases from off in the trees, and a frog calls now and then. Both stay soft, as if they were across the water.
 - **Leave it alone.** A full load burns for about 13 minutes, down to glowing embers, then coals, then rest. It keeps burning while the popup is closed, and after a restart or a suspend it picks up where it would have been.
 
 The bar icon is a little pixel fire that follows along, so you can tell at a glance whether it needs a log. Hover it for the status.
@@ -28,7 +28,7 @@ The bar icon is a little pixel fire that follows along, so you can tell at a gla
 
 ### Keys
 
-While the popup is open: `A` adds a log, `S` stokes, `M` toggles sound, `Tab` moves between the buttons, `Esc` closes it.
+While the popup is open: `A` adds a log, `S` stokes, `M` cycles Sound off → Sound on → Always on, `Tab` moves between the buttons, `Esc` closes it.
 
 ### Keybind and scripts
 
@@ -40,7 +40,7 @@ omarchy-shell wesleygrimes.omafire addLog
 omarchy-shell wesleygrimes.omafire status
 ```
 
-The functions are `toggle`, `open`, `close`, `addLog`, `stoke`, `poke`, `sound`, and `status` (prints JSON with fuel, heat, boost, status, open, and sound).
+The functions are `toggle`, `open`, `close`, `addLog`, `stoke`, `poke`, `sound`, and `status`. The `sound` call cycles Sound off → Sound on → Always on. The `status` call prints JSON with fuel, heat, boost, status, open, sound, soundMode (0: off, 1: while open, 2: always on), and audioPlaying (whether playback is requested now).
 
 To open it from the keyboard, add a binding to `~/.config/hypr/bindings.lua`:
 
